@@ -66,6 +66,7 @@ def fix_fluid_only_mesh(meshFile):
 
     # Fix Fluid topology
     for node_id in range(len(fluidIDs)):
+        print(node_id)
         fluidTopology = np.where(fluidTopology == fluidIDs[node_id], node_id, fluidTopology)
 
     shutil.copyfile(fluid_mesh_path, fluid_mesh_path_fixed)

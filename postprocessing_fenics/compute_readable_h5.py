@@ -38,6 +38,8 @@ def format_output_data(case_path, mesh_name, dt, stride, save_deg):
         elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
             visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain") 
 
+    # KY's hack
+    visualization_separate_domain_path = case_path + "/Visualization_separate_domain"
 
     file_path_d = Path(os.path.join(visualization_separate_domain_path, "displacement_save_deg_"+str(save_deg)+'.h5'))
     d_path_in = str(os.path.join(visualization_separate_domain_path,"d.h5")) 

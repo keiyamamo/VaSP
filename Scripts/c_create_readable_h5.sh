@@ -1,18 +1,11 @@
 #!/bin/bash
 
-source script_params.config
+source /cluster/home/keiya/Aneurysm_Workflow_FSI/script_params.config
 
-if [ $operating_sys != "local" ] ;
-then
-cd $SLURM_SUBMIT_DIR
-source /home/s/steinman/dbruneau/sourceme.conf
-echo "Running scripts on Niagara"
-else
-echo "Running scripts on local os"
-fi
+source /cluster/shared/fenics/conf/fenics-2019.1.0.saga.intel.conf
 
 # point to config file on the command line, like this: sbatch d_execute.sh path/to/config.config
-. $1
+source $1
 
 echo "Sourcing config file: $1"
 echo "case path: $case_path, mesh path: $mesh_path, timestep: $dt,  end time of simulation: $end_t"

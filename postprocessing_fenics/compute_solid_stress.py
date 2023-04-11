@@ -39,15 +39,17 @@ def compute_stress(case_path, mesh_name, E_s, nu_s, dt, stride, save_deg):
 
     # File paths
 
-    for file in os.listdir(case_path):
-        file_path = os.path.join(case_path, file)
-        if os.path.exists(os.path.join(file_path, "1")):
-            visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    # for file in os.listdir(case_path):
+    #     file_path = os.path.join(case_path, file)
+    #     if os.path.exists(os.path.join(file_path, "1")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
     
+    # visualization_separate_domain_path = Path(visualization_separate_domain_path)
+    # KY's hack
+    visualization_separate_domain_path = case_path + "/Visualization_separate_domain"
     visualization_separate_domain_path = Path(visualization_separate_domain_path)
-
     file_path_d = visualization_separate_domain_path / "d.h5"
     sig_path = (visualization_separate_domain_path / "TrueStress.xdmf").__str__()
     ep_path = (visualization_separate_domain_path / "InfinitesimalStrain.xdmf").__str__()

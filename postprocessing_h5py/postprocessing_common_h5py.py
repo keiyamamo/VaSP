@@ -38,10 +38,11 @@ def read_command_line():
     parser.add_argument('--end_t', type=float, default=0.05, help="End time of simulation (s)")
     parser.add_argument('--dvp', type=str, default="v", help="Quantity to postprocess, input v for velocity, d for sisplacement, p for pressure, or wss for wall shear stress")
     parser.add_argument('--bands', default="25,100000", help="input lower then upper band for Band-pass filtered displacement, in a list of pairs. for example: --bands '100 150 175 200' gives you band-pass filtered visualization for the band between 100 and 150, and another visualization for the band between 175 and 200")
+    parser.add_argument("--perform_hi_pass", type=bool, default=False, help="Perform high pass filter on displacement")
 
     args = parser.parse_args()
 
-    return args.case, args.mesh, args.save_deg, args.stride, args.dt, args.start_t, args.end_t, args.dvp, args.bands
+    return args.case, args.mesh, args.save_deg, args.stride, args.dt, args.start_t, args.end_t, args.dvp, args.bands, args.perform_hi_pass
 
 def read_command_line_spi():
     """Read arguments from commandline"""
@@ -91,7 +92,7 @@ def read_command_line_spec():
 
 
 def get_visualization_path(case_path):
-
+    visualization_path = None
     if os.path.exists(os.path.join(case_path,"results")):
         # Finds the visualization path for BSL Solver format
         file_path = os.path.join(case_path,"results")
@@ -976,7 +977,7 @@ def create_transformed_matrix(input_path, output_folder,meshFile, case_name, sta
     time_between_files = time_ts[2] - time_ts[1] # Calculate the time between files from xdmf file
 
     # Open up the first h5 file to get the number of timesteps and nodes for the output data
-    file = input_path + '/'+  h5_ts[0]
+    file = input_path +  h5_ts[0]
     vectorData = h5py.File(file) 
     if dvp == "wss" or dvp == "mps" or dvp == "strain":
         ids = list(range(len(vectorData['VisualisationVector/0'][:])))
@@ -986,7 +987,8 @@ def create_transformed_matrix(input_path, output_folder,meshFile, case_name, sta
 
     # Get shape of output data
     num_rows = vectorArray.shape[0]
-    num_cols = int((end_t-start_t)/(time_between_files*stride))-1 
+    # num_cols = int((end_t-start_t)/(time_between_files*stride))-1 
+    num_cols = int((end_t-start_t)/(time_between_files*stride)) 
 
     # Pre-allocate the arrays for the formatted data
     if dvp == "v" or dvp == "d":
@@ -1027,7 +1029,7 @@ def create_transformed_matrix(input_path, output_folder,meshFile, case_name, sta
             ArrayName = 'VisualisationVector/' + str((index_ts[i]))    
             vectorArrayFull = vectorData[ArrayName][:,:] # Important not to take slices of this array, slows code considerably... 
             # instead make a copy (VectorArrayFull) and slice that.
-            
+
             try:
                 # Get required data depending on whether pressure, displacement or velocity
                 if dvp == "p" or dvp == "wss" or dvp =="mps":

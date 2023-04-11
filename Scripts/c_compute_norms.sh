@@ -1,12 +1,12 @@
 #!/bin/bash
 
-source script_params.config
+source /cluster/home/keiya/Aneurysm_Workflow_FSI/script_params.config
 
 if [ $operating_sys != "local" ] ;
 then
 cd $SLURM_SUBMIT_DIR
-source /home/s/steinman/dbruneau/sourceme.conf
-echo "Running scripts on Niagara"
+source /cluster/shared/fenics/conf/fenics-2019.1.0.saga.intel.conf
+echo "Running scripts on Saga"
 else
 echo "Running scripts on local os"
 fi

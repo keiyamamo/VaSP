@@ -32,11 +32,11 @@ Example: --dt 0.000679285714286 --mesh file_case16_el06 --end_t 0.951
 
 """
 
-def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands):
+def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands, perform_hi_pass):
 
     case_name = os.path.basename(os.path.normpath(case_path)) # obtains only last folder in case_path
-    visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
-    
+    # visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
+    visualization_path = case_path + "/Visualization/"
     bands_list = bands.split(",")
     num_bands = int(len(bands_list)/2)
     lower_freq = np.zeros(num_bands)
@@ -71,8 +71,8 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
     formatted_data_path = formatted_data_folder+"/"+output_file_name
     
     # If the output file exists, don't re-make it
-    #if os.path.exists(formatted_data_path):
-    #    print('path found!')
+    if os.path.exists(formatted_data_path):
+       print('path found!')
     if dvp == "wss":
         time_between_input_files = postprocessing_common_h5py.create_transformed_matrix(visualization_separate_domain_folder, formatted_data_folder, mesh_path_fluid_sd1, case_name, start_t,end_t,dvp,stride)
     elif dvp == "mps" or dvp == "strain":
@@ -87,8 +87,9 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
     if dvp != "wss" and dvp != "mps" and dvp != "strain":
         postprocessing_common_h5py.create_domain_specific_viz(formatted_data_folder, visualization_separate_domain_folder, mesh_path,save_deg, time_between_output_files,start_t,dvp)
         postprocessing_common_h5py.reduce_save_deg_viz(formatted_data_folder, visualization_sd1_folder, mesh_path,1, time_between_output_files,start_t,dvp)
-    
-        if save_deg == 1:
+    # #NOTE: I do not know why save_deg needs to be 1 here. It could be 2 as well? Also, do we need high pass viz for velocity and pressure?
+        if dvp == "d" and perform_hi_pass:
+            print("creating hi pass viz")
             for i in range(len(lower_freq)):
                 postprocessing_common_h5py.create_hi_pass_viz(formatted_data_folder, visualization_hi_pass_folder, mesh_path,time_between_output_files,start_t,dvp,lower_freq[i],higher_freq[i])
                 postprocessing_common_h5py.create_hi_pass_viz(formatted_data_folder, visualization_hi_pass_folder, mesh_path,time_between_output_files,start_t,dvp,lower_freq[i],higher_freq[i],amplitude=True)
@@ -102,5 +103,5 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
 
 if __name__ == '__main__':
     # Get Command Line Arguments and Input File Paths
-    case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands = postprocessing_common_h5py.read_command_line()
-    create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands)
+    case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands, perform_hi_pass = postprocessing_common_h5py.read_command_line()
+    create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands, perform_hi_pass)

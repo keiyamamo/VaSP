@@ -1,0 +1,46 @@
+  1) StdEnv
+Sourcing config file: config_files/case9_300k.config
+case path: /cluster/work/users/keiya/case9_300k, mesh path: case9_300k, timestep: 0.00033964286, end time of simulation: 1.902
+Running h5py postprocessing scripts!
+1.4.1
+path found!
+Start time: 0.951, end time: 1.902
+Creating matrix for case case9_300k...
+Path exists
+/cluster/home/keiya/Aneurysm_Workflow_FSI/postprocessing_h5py/postprocessing_common_h5py.py:981: H5pyDeprecationWarning: The default file mode will change to 'r' (read-only) in h5py 3.0. To suppress this warning, pass the mode you need to h5py.File(), or set the global default h5.get_config().default_file_mode, or set the environment variable H5PY_DEFAULT_READONLY=1. Available modes are: 'r', 'r+', 'w', 'w-'/'x', 'a'. See the docs for details.
+  vectorData = h5py.File(file)
+Traceback (most recent call last):
+  File "/cluster/software/h5py/2.10.0-intel-2020a-Python-3.8.2/lib/python3.8/site-packages/h5py/_hl/files.py", line 199, in make_fid
+    fid = h5f.open(name, h5f.ACC_RDWR, fapl=fapl)
+  File "h5py/_objects.pyx", line 54, in h5py._objects.with_phil.wrapper
+  File "h5py/_objects.pyx", line 55, in h5py._objects.with_phil.wrapper
+  File "h5py/h5f.pyx", line 88, in h5py.h5f.open
+OSError: Unable to open file (unable to lock file, errno = 11, error message = 'Resource temporarily unavailable')
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/cluster/software/h5py/2.10.0-intel-2020a-Python-3.8.2/lib/python3.8/site-packages/h5py/_hl/files.py", line 202, in make_fid
+    fid = h5f.open(name, h5f.ACC_RDONLY, fapl=fapl)
+  File "h5py/_objects.pyx", line 54, in h5py._objects.with_phil.wrapper
+  File "h5py/_objects.pyx", line 55, in h5py._objects.with_phil.wrapper
+  File "h5py/h5f.pyx", line 88, in h5py.h5f.open
+OSError: Unable to open file (unable to lock file, errno = 11, error message = 'Resource temporarily unavailable')
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/cluster/home/keiya/Aneurysm_Workflow_FSI/postprocessing_h5py/create_visualizations.py", line 107, in <module>
+    create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands, perform_hi_pass)
+  File "/cluster/home/keiya/Aneurysm_Workflow_FSI/postprocessing_h5py/create_visualizations.py", line 83, in create_visualizations
+    time_between_input_files = postprocessing_common_h5py.create_transformed_matrix(visualization_path, formatted_data_folder, mesh_path, case_name, start_t,end_t,dvp,stride)
+  File "/cluster/home/keiya/Aneurysm_Workflow_FSI/postprocessing_h5py/postprocessing_common_h5py.py", line 981, in create_transformed_matrix
+    vectorData = h5py.File(file) 
+  File "/cluster/software/h5py/2.10.0-intel-2020a-Python-3.8.2/lib/python3.8/site-packages/h5py/_hl/files.py", line 406, in __init__
+    fid = make_fid(name, mode, userblock_size,
+  File "/cluster/software/h5py/2.10.0-intel-2020a-Python-3.8.2/lib/python3.8/site-packages/h5py/_hl/files.py", line 204, in make_fid
+    fid = h5f.create(name, h5f.ACC_EXCL, fapl=fapl, fcpl=fcpl)
+  File "h5py/_objects.pyx", line 54, in h5py._objects.with_phil.wrapper
+  File "h5py/_objects.pyx", line 55, in h5py._objects.with_phil.wrapper
+  File "h5py/h5f.pyx", line 108, in h5py.h5f.create
+OSError: Unable to create file (unable to open file: name = '/cluster/work/users/keiya/case9_300k/Visualization/velocity_run_1.h5', errno = 17, error message = 'File exists', flags = 15, o_flags = c2)

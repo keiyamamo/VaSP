@@ -25,7 +25,7 @@ print(mesh_path)
 
 # Read in original FSI mesh
 mesh = Mesh()
-hdf = HDF5File(mesh.mpi_comm(), mesh_path, "r")
+hdf = HDF5File(MPI.comm_world, mesh_path, "r")
 hdf.read(mesh, "/mesh", False)
 
 domains = MeshFunction("size_t", mesh, 3)
@@ -43,7 +43,7 @@ mesh_fluid = SubMesh(mesh,domains,1)
 fluid_mesh_path = mesh_path.replace(".h5","_fluid_only.h5")
 
 # Save refined mesh
-hdf = HDF5File(mesh_fluid.mpi_comm(), fluid_mesh_path, "w")
+hdf = HDF5File(MPI.comm_world, fluid_mesh_path, "w")
 hdf.write(mesh_fluid, "/mesh")
 
 print("fluid-only mesh saved to:")

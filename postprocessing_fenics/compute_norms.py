@@ -33,18 +33,22 @@ def format_output_data(case_path, mesh_name, dt, stride, save_deg):
     cycle_length = 0.951
     compare_cycle=2 # compare 3rd and 4th cycle to cycle #2
     # File paths
-
-    for file in os.listdir(case_path):
-        file_path = os.path.join(case_path, file)
-        if os.path.exists(os.path.join(file_path, "1")):
-            visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain") 
+    visualization_path = case_path + "/Visualization/"
+    visualization_separate_domain_path = case_path + "/Visualization_separate_domain"
+    # for file in os.listdir(case_path):
+    #     file_path = os.path.join(case_path, file)
+    #     if os.path.exists(os.path.join(file_path, "1")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain") 
     
-    imageFolder = os.path.join(visualization_separate_domain_path, "../Images") 
-
+    
+    # imageFolder = os.path.join(visualization_separate_domain_path, "/Images") 
+    imageFolder = visualization_separate_domain_path + "/Images"
+    if not os.path.isdir(imageFolder):
+        os.mkdir(imageFolder)
 
     file_path_d = Path(os.path.join(visualization_separate_domain_path, "displacement_save_deg_"+str(save_deg)+'.h5'))
     file_path_v = Path(os.path.join(visualization_separate_domain_path, "velocity_save_deg_"+str(save_deg)+'.h5')) 

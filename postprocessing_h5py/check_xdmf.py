@@ -4,7 +4,7 @@ import numpy as np
 import re
 import postprocessing_common_h5py
 import sys
-
+from os import path
 """
 This script checks the temporal spacing in the xdmf files
 
@@ -26,7 +26,8 @@ start_t = postprocessing_common_h5py.read_command_line()[5]
 end_t = postprocessing_common_h5py.read_command_line()[6]
 
 
-visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
+#visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
+visualization_path = path.join(case_path, "Visualization")
 
 # Get name of xdmf file
 if dvp == 'd':

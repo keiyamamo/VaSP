@@ -33,15 +33,18 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
     """
     # File paths
 
-    for file in os.listdir(case_path):
-        file_path = os.path.join(case_path, file)
-        if os.path.exists(os.path.join(file_path, "1")):
-            visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    # for file in os.listdir(case_path):
+    #     file_path = os.path.join(case_path, file)
+    #     if os.path.exists(os.path.join(file_path, "1")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
             
+    # visualization_separate_domain_path = Path(visualization_separate_domain_path)
+    # KY's hack 
+    visualization_separate_domain_path = case_path + "/Visualization_separate_domain"
     visualization_separate_domain_path = Path(visualization_separate_domain_path)
     file_path_u = visualization_separate_domain_path / "v.h5"
     WSS_ts_path = (visualization_separate_domain_path / "WSS_ts.xdmf").__str__()

@@ -29,13 +29,13 @@ mesh_path = os.path.join(folder,"mesh",mesh_name +".h5")
 """
 
 # find the visualization path (used to determine correct node numbering)
-for file in os.listdir(folder):
-    file_path = os.path.join(folder, file)
-    if os.path.exists(os.path.join(file_path, "1")):
-        visualization_path = os.path.join(file_path, "1/Visualization")
-    elif os.path.exists(os.path.join(file_path, "Visualization")):
-        visualization_path = os.path.join(file_path, "Visualization")
-
+# for file in os.listdir(folder):
+#     file_path = os.path.join(folder, file)
+#     if os.path.exists(os.path.join(file_path, "1")):
+#         visualization_path = os.path.join(file_path, "1/Visualization")
+#     elif os.path.exists(os.path.join(file_path, "Visualization")):
+#         visualization_path = os.path.join(file_path, "Visualization")
+visualization_path = os.path.join(folder, "Visualization")
 # Read in original FSI mesh
 mesh = Mesh()
 hdf = HDF5File(mesh.mpi_comm(), mesh_path, "r")

@@ -60,7 +60,8 @@ def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t
 
     
     case_name = os.path.basename(os.path.normpath(case_path)) # obtains only last folder in case_path
-    visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
+    # visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
+    visualization_path = os.path.join(case_path, 'Visualization')
     
     
     #--------------------------------------------------------
@@ -103,7 +104,6 @@ def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t
     # For spectrograms, we only want the magnitude
     component = dvp+"_mag"
     df = postprocessing_common_h5py.read_npz_files(formatted_data_path)
-       
     # Get wall and fluid ids
     fluidIDs, wallIDs, allIDs = postprocessing_common_h5py.get_domain_ids(mesh_path)
     interfaceIDs = postprocessing_common_h5py.get_interface_ids(mesh_path)
@@ -131,7 +131,6 @@ def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t
         dvp=dvp+"_wall"
     else:
         df = df.iloc[fluidIDs]   # For velocity spectrogram, we need to take only the fluid IDs
-    
        
     return dvp, df, case_name, case_path, imageFolder, visualization_hi_pass_folder
 

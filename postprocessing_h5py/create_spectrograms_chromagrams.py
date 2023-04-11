@@ -149,7 +149,7 @@ def create_spectrogram_composite(case_name, dvp, df, start_t, end_t,
         cax.remove()
     
     
-    if amplitude_file:
+    if os.path.isfile(amplitude_file):
         # Hack to make all the x axes of the subplots align
         divider = make_axes_locatable(ax5)
         cax = divider.append_axes("right", size="5%", pad=0.9)

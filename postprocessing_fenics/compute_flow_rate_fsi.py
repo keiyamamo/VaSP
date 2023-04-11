@@ -36,14 +36,18 @@ def compute_wss(case_path,mesh_name, dt, stride, save_deg):
     """
     # File paths
 
-    for file in os.listdir(case_path):
-        file_path = os.path.join(case_path, file)
-        if os.path.exists(os.path.join(file_path, "1")):
-            visualization_path = os.path.join(file_path, "1/Visualization")
-        elif os.path.exists(os.path.join(file_path, "Visualization")):
-            visualization_path = os.path.join(file_path, "Visualization")
+    # for file in os.listdir(case_path):
+    #     file_path = os.path.join(case_path, file)
+    #     if os.path.exists(os.path.join(file_path, "1")):
+    #         visualization_path = os.path.join(file_path, "1/Visualization")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization")):
+    #         visualization_path = os.path.join(file_path, "Visualization")
     
-    visualization_path = Path(visualization_path)
+    # visualization_path = Path(visualization_path)
+    # KY's hack
+    # visualization_separate_domain_path = case_path + "/Visualization_separate_domain"
+    visualization_path = case_path + "/Visualization_separate_domain"
+    # visualization_path = case_path + "/Visualization/"
     file_path_u = visualization_path / "v.h5"
     file_path_v = visualization_path / "velocity.h5"
     file_path_flow_rate = visualization_path / "flow_rates.txt"
