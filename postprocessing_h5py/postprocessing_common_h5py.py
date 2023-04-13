@@ -38,7 +38,8 @@ def read_command_line():
     parser.add_argument('--end_t', type=float, default=0.05, help="End time of simulation (s)")
     parser.add_argument('--dvp', type=str, default="v", help="Quantity to postprocess, input v for velocity, d for sisplacement, p for pressure, or wss for wall shear stress")
     parser.add_argument('--bands', default="25,100000", help="input lower then upper band for Band-pass filtered displacement, in a list of pairs. for example: --bands '100 150 175 200' gives you band-pass filtered visualization for the band between 100 and 150, and another visualization for the band between 175 and 200")
-    parser.add_argument("--perform_hi_pass", type=bool, default=False, help="Perform high pass filter on displacement")
+    parser.add_argument("--perform_hi_pass", action="store_true", help="Perform high pass filter on displacement")
+    parser.add_argument("--no_hi_pass", dest="perform_hi_pass", action="store_false", help="Do not perform high pass filter on displacement")
 
     args = parser.parse_args()
 
@@ -336,7 +337,7 @@ def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,sa
 
     # Create output directory
     if os.path.exists(output_folder):
-        print('Path exists!')
+        print(f'Path exists {output_folder}')
     if not os.path.exists(output_folder):
         print("creating output folder")
         os.makedirs(output_folder)
@@ -365,7 +366,7 @@ def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,sa
 
     # Remove old file path
     if os.path.exists(output_path):
-        print('File path exists; rewriting')
+        print(f'File path exists {output_path}; rewriting')
         os.remove(output_path)
     # Create H5 file
     vectorData = h5py.File(output_path,'a')
@@ -400,6 +401,7 @@ def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,sa
         topoArray[...] = fluidTopology
 
     # 2. loop through elements and load in the df
+    print("Looping through elements and loading in the df")
     for idx in range(num_ts):
         ArrayName = 'VisualisationVector/' + str(idx)
         if dvp == "p":
@@ -427,6 +429,7 @@ def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,sa
     vectorData.close() 
 
     # 3 create xdmf so that we can visualize
+    print("Creating xdmf file")
     if dvp == "d":
         create_xdmf_file(num_ts,time_between_files,start_t,nElementsSolid,nNodesSolid,attType,viz_type,output_folder)
 
@@ -449,7 +452,6 @@ def reduce_save_deg_viz(formatted_data_folder, output_folder, meshFile,save_deg,
 
 
     # Create name for output file, define output path
-
     if dvp == "v":
         viz_type = 'velocity'
     elif dvp == "d":
@@ -465,7 +467,7 @@ def reduce_save_deg_viz(formatted_data_folder, output_folder, meshFile,save_deg,
 
     # Create output directory
     if os.path.exists(output_folder):
-        print('Path exists!')
+        print(f'Path exists {output_folder}')
     if not os.path.exists(output_folder):
         print("creating output folder")
         os.makedirs(output_folder)
@@ -487,7 +489,7 @@ def reduce_save_deg_viz(formatted_data_folder, output_folder, meshFile,save_deg,
 
     # Remove old file path
     if os.path.exists(output_path):
-        print('File path exists; rewriting')
+        print(f'File path exists {output_path}; rewriting')
         os.remove(output_path)
     # Create H5 file
     vectorData = h5py.File(output_path,'a')
@@ -520,7 +522,107 @@ def reduce_save_deg_viz(formatted_data_folder, output_folder, meshFile,save_deg,
     # 3 create xdmf so that we can visualize
     create_xdmf_file(num_ts,time_between_files,start_t,nElementsFSI,nNodesFSI,attType,viz_type,output_folder)
 
+def extract_time_steps(formatted_data_folder, output_folder, start_t, end_t, stride_tstep, dvp, save_deg, meshFile, dt):
+    """
+    Create a xdmf file that contains the certain time steps that you specify
 
+    Args:  
+        formatted_data_folder (str): path to folder containing formatted data with npz format
+        output_folder (str): path to folder where you want to save the xdmf file
+        start_t (int): start time step that you want to extract
+        end_t (int): end time step that you want to extract
+        stride_tstep (int): stride of time steps that you want to extract
+    Return:
+        None, but creates an xdmf file in the output folder
+    """
+    print("Extracting time steps")
+
+    # Get input data
+    components_data = []
+    component_names = ["mag","x","y","z"]
+    for i in range(len(component_names)):
+        if dvp == "p" and i>0:
+            break
+        file_str = dvp+"_"+component_names[i]+".npz"
+        print(f"reading in {file_str}... takes some time")
+        component_file = [file for file in os.listdir(formatted_data_folder) if file_str in file]
+        component_data = np.load(formatted_data_folder+"/"+component_file[0])['component']
+        components_data.append(component_data)
+
+    # Create name for output file, define output path
+    if dvp == "v":
+        viz_type = 'velocity'
+    elif dvp == "d":
+        viz_type = 'displacement'
+    elif dvp == "p":
+        viz_type = 'pressure'
+    else:
+        print("Input d, v or p for dvp")
+
+    viz_type = viz_type+"_save_deg_"+str(save_deg)+"_start_t_"+str(start_t)+"_end_t_"+str(end_t)
+    output_file_name = viz_type+'.h5'  
+    output_path = os.path.join(output_folder, output_file_name)
+
+     #read in the fsi mesh:
+    fsi_mesh = h5py.File(meshFile,'r')
+
+    # Count fluid and total nodes
+    coordArrayFSI= fsi_mesh['mesh/coordinates'][:,:]
+    topoArrayFSI= fsi_mesh['mesh/topology'][:,:]
+    nNodesFSI = coordArrayFSI.shape[0]
+    nElementsFSI = topoArrayFSI.shape[0]
+
+    # Get fluid only topology
+    fluidIDs, wallIDs, allIDs = get_domain_ids(meshFile)
+
+    # Get number of timesteps
+    num_ts = components_data[0].shape[1]    
+    print(f"Number of time steps is {num_ts}")
+    
+    # Remove old file path
+    if os.path.exists(output_folder):
+        pass
+    elif os.path.exists(output_path):
+        print(f'File path exists {output_path}; rewriting')
+        os.remove(output_path)
+    else:
+        print(f'File path does not exist {output_path}; creating new file')
+        os.makedirs(output_folder)
+    # Create H5 file
+    vectorData = h5py.File(output_path,'a')
+
+    # Create mesh arrays
+    geoArray = vectorData.create_dataset("Mesh/0/mesh/geometry", (nNodesFSI,3))
+    geoArray[...] = coordArrayFSI
+    topoArray = vectorData.create_dataset("Mesh/0/mesh/topology", (nElementsFSI,4), dtype='i')
+    topoArray[...] = topoArrayFSI
+
+    time_steps_of_interest = np.arange(int(start_t), int(end_t), int(stride_tstep))
+    print(f"Time steps of interest is from {start_t} to {end_t} with a stride of {stride_tstep}")
+    # 2. loop through elements and load in the df
+    for idx in time_steps_of_interest:
+
+        ArrayName = 'VisualisationVector/' + str(idx)
+        if dvp == "p":
+            v_array = vectorData.create_dataset(ArrayName, (nNodesFSI,1))
+            v_array[:,0] = components_data[0][allIDs,idx]
+            attType = "Scalar"
+
+        else:
+            v_array = vectorData.create_dataset(ArrayName, (nNodesFSI,3))
+            v_array[:,0] = components_data[1][allIDs,idx]
+            v_array[:,1] = components_data[2][allIDs,idx]
+            v_array[:,2] = components_data[3][allIDs,idx]
+            attType = "Vector"
+
+    vectorData.close()
+
+    # 3 create xdmf so that we can visualize
+    time_between_files = dt
+    num_ts = len(time_steps_of_interest)
+    create_xdmf_file(num_ts,time_between_files,start_t,nElementsFSI,nNodesFSI,attType,viz_type,output_folder)
+
+    return None
 
 def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_between_files,start_t,dvp,lowcut=0,highcut=100000,amplitude=False):
 
@@ -567,7 +669,7 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
 
     # Create output directory
     if os.path.exists(output_folder):
-        print('Path exists!')
+        print(f'Path exists {output_folder}')
     if not os.path.exists(output_folder):
         print("creating output folder")
         os.makedirs(output_folder)
@@ -594,7 +696,7 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
 
     # Remove old file path
     if os.path.exists(output_path):
-        print('File path exists; rewriting')
+        print(f'File path exists {output_path}; rewriting')
         os.remove(output_path)
     # Create H5 file
     vectorData = h5py.File(output_path,'a')
@@ -738,7 +840,7 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
             output_file_name = viz_type+'.h5'  
             output_path = os.path.join(output_folder, output_file_name) 
             if os.path.exists(output_path):
-                print('File path exists; rewriting')
+                print(f'File path exists {output_path}; rewriting')
                 os.remove(output_path)
 
             # Create H5 file
@@ -848,7 +950,7 @@ def create_xdmf_file(num_ts,time_between_files,start_t,nElements,nNodes,attType,
 
     # Remove old file path
     if os.path.exists(xdmf_path):
-        print('File path exists; rewriting')
+        print(f'File path {xdmf_path} exists; rewriting')
         os.remove(xdmf_path)
 
     xdmf_file = open(xdmf_path, 'w') 
@@ -906,7 +1008,7 @@ def create_fixed_xdmf_file(time_values,nElements,nNodes,attType,viz_type,h5_file
 
     # Remove old file path
     if os.path.exists(xdmf_path):
-        print('File path exists; rewriting')
+        print(f'File path {xdmf_path} exists; rewriting')
         os.remove(xdmf_path)
 
     xdmf_file = open(xdmf_path, 'w') 
@@ -921,7 +1023,7 @@ def create_transformed_matrix(input_path, output_folder,meshFile, case_name, sta
 
     # Create output directory
     if os.path.exists(output_folder):
-        print('Path exists')
+        print(f'Path exists {output_folder}')
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -1079,7 +1181,7 @@ def create_transformed_matrix(input_path, output_folder,meshFile, case_name, sta
 
         # Remove old file path
         if os.path.exists(output_path):
-            print('File path exists; rewriting')
+            print(f'File path exists {output_path}; rewriting')
             os.remove(output_path)
 
         # Store output in npz file
