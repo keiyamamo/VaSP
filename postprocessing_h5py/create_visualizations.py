@@ -33,6 +33,7 @@ Example: --dt 0.000679285714286 --mesh file_case16_el06 --end_t 0.951
 """
 
 def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, end_t, dvp, bands, perform_hi_pass):
+    print(f"perform_hi_pass = {perform_hi_pass}")
 
     case_name = os.path.basename(os.path.normpath(case_path)) # obtains only last folder in case_path
     # visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
@@ -86,6 +87,7 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
     time_between_output_files = time_between_input_files*stride 
     if dvp != "wss" and dvp != "mps" and dvp != "strain":
         postprocessing_common_h5py.create_domain_specific_viz(formatted_data_folder, visualization_separate_domain_folder, mesh_path,save_deg, time_between_output_files,start_t,dvp)
+        # TODO: here mesh_path should be the mesh_path_sd1 ?
         postprocessing_common_h5py.reduce_save_deg_viz(formatted_data_folder, visualization_sd1_folder, mesh_path,1, time_between_output_files,start_t,dvp)
     # #NOTE: I do not know why save_deg needs to be 1 here. It could be 2 as well? Also, do we need high pass viz for velocity and pressure?
         if dvp == "d" and perform_hi_pass:
