@@ -179,8 +179,8 @@ def compute_stress(case_path, mesh_name, E_s, nu_s, dt, stride, save_deg):
 
         sig_P = stress_strain.project_solid(eigStress11,Scal,dx) # Calculate Principal stress tensor
         #sig_P = project(eigStress,Tens) # Calculate Principal stress tensor
-        ep_P = stress_strain.project_solid(eigStrain11,Scal,dx) # Calculate Principal stress tensor
-        #ep_P = project(eigStrain,Tens) # Calculate Principal stress tensor
+        ep_P = stress_strain.project_solid(eigStrain11,Scal,dx) # Calculate Principal strain tensor
+        #ep_P = project(eigStrain,Tens) # Calculate Principal strain tensor
     
         # Name function
         ep.rename("InfinitesimalStrain", "ep")
