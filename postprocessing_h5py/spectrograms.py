@@ -96,7 +96,8 @@ def read_command_line_spec():
 def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t, n_samples, ylim, r_sphere, x_sphere, y_sphere, z_sphere, dvp, interface_only,component,point_id,flow_rate_file_name=None,sampling_method="RandomPoint"):
     
     case_name = os.path.basename(os.path.normpath(case_path)) # obtains only last folder in case_path
-    visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
+    # visualization_path = postprocessing_common_h5py.get_visualization_path(case_path)
+    visualization_path = os.path.join(case_path, 'Visualization')
 
     
     
@@ -128,6 +129,7 @@ def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t
     #--------------------------------------------------------
     
     # If the output file exists, don't re-make it
+    
     if os.path.exists(formatted_data_path):
         print('path found!')
     elif dvp == "wss":
@@ -392,7 +394,7 @@ def get_spectrogram(dfNearest,fsamp,nWindow,overlapFrac,window,start_t,end_t, sc
 	if interpolate == True:
 		interp_spline = RectBivariateSpline(freqs, bins, Pxx_mean, kx=3, ky=3)
 		bins = np.linspace(start_t,end_t,100) #arange(-xmax, xmax, dx2)
-		# freqs = np.linspace(0,freqs.max(),100) #np.arange(-ymax, ymax, dy2)
+		freqs = np.linspace(0,freqs.max(),100) #np.arange(-ymax, ymax, dy2)
 		Pxx_mean = interp_spline(freqs, bins)
 		print('bins shape, freqs shape, pxx shape', bins.shape, freqs.shape, Pxx_mean.shape)
 	
@@ -453,10 +455,9 @@ def filter_time_data(df,fs,lowcut=25.0,highcut=15000.0,order=6,btype='highpass')
 		df_filtered.iloc[row] = butter_bandpass_filter(df.iloc[row],lowcut=lowcut,highcut=highcut,fs=fs,order=order,btype=btype)
 	return df_filtered
 
-def compute_average_spectrogram(df, fs, nWindow,overlapFrac,window,start_t,end_t,thresh, scaling="spectrum", filter_data=False,thresh_method="new"):
+def compute_average_spectrogram(df, fs, nWindow,overlapFrac,window,start_t,end_t,thresh, scaling="spectrum", filter_data=False,thresh_method="new"): 
 	if filter_data == True:
 		df = filter_time_data(df,fs)
-
 	Pxx_mean, freqs, bins = get_spectrogram(df,fs,nWindow,overlapFrac,window,start_t,end_t, scaling) # mode of the spectrogram
 	if thresh_method == "new":
 		Pxx_scaled, max_val, min_val, lower_thresh = spectrogram_scaling(Pxx_mean,thresh)
