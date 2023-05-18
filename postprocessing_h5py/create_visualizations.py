@@ -46,7 +46,6 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
         lower_freq[i] = float(bands_list[2*i])
         higher_freq[i] = float(bands_list[2*i+1])
     
-    
     # Get Mesh
     if save_deg == 1:
         mesh_path = case_path + "/mesh/" + mesh_name +".h5" # Mesh path. Points to the corner-node input mesh
@@ -59,9 +58,9 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
     # Get Command Line Arguments and Input File Paths
     formatted_data_folder_name = "res_"+case_name+'_stride_'+str(stride)+"t"+str(start_t)+"_to_"+str(end_t)+"save_deg_"+str(save_deg)
     formatted_data_folder = os.path.join(case_path,formatted_data_folder_name)
-    visualization_separate_domain_folder = os.path.join(visualization_path,"../Visualization_separate_domain")
-    visualization_hi_pass_folder = os.path.join(visualization_path,"../visualization_hi_pass")
-    visualization_sd1_folder = os.path.join(visualization_path,"../Visualization_sd1")
+    visualization_separate_domain_folder = os.path.join(case_path, "Visualization_separate_domain")
+    visualization_hi_pass_folder = os.path.join(case,_path, "Visualization_hi_pass")
+    visualization_sd1_folder = os.path.join(case_path, "Visualization_sd1")
     
     #visualization_sd1_folder = os.path.join(visualization_path,"../visualization_save_deg_1")
     
@@ -88,7 +87,8 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
     if dvp != "wss" and dvp != "mps" and dvp != "strain":
         postprocessing_common_h5py.create_domain_specific_viz(formatted_data_folder, visualization_separate_domain_folder, mesh_path,save_deg, time_between_output_files,start_t,dvp)
         # TODO: here mesh_path should be the mesh_path_sd1 ?
-        postprocessing_common_h5py.reduce_save_deg_viz(formatted_data_folder, visualization_sd1_folder, mesh_path,1, time_between_output_files,start_t,dvp)
+        # NOTE: For now, reduce_save_deg_viz is not necessary and skip it 18/05/2023 Kei 
+        # postprocessing_common_h5py.reduce_save_deg_viz(formatted_data_folder, visualization_sd1_folder, mesh_path,1, time_between_output_files,start_t,dvp)
     # #NOTE: I do not know why save_deg needs to be 1 here. It could be 2 as well? Also, do we need high pass viz for velocity and pressure?
         if dvp == "d" and perform_hi_pass:
             print("creating hi pass viz")
