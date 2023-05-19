@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, filtfilt
 from scipy.signal import spectrogram, periodogram
 import scipy
-print(scipy.__version__)
 import random
 from scipy.interpolate import RectBivariateSpline
 from scipy.stats import entropy
