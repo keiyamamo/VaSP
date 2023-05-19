@@ -307,21 +307,7 @@ def calculate_spi(case_name, df, output_folder, meshFile,start_t,end_t,low_cut,h
 
 def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,save_deg,time_between_files,start_t,dvp):
 
-    # Get input data
-    components_data = []
-    component_names = ["mag","x","y","z"]
-    for i in range(len(component_names)):
-        if dvp == "p" and i>0:
-            break
-        file_str = dvp+"_"+component_names[i]+".npz"
-        print(file_str)
-        component_file = [file for file in os.listdir(formatted_data_folder) if file_str in file]
-        component_data = np.load(formatted_data_folder+"/"+component_file[0])['component']
-        components_data.append(component_data)
-
-
     # Create name for output file, define output path
-
     if dvp == "v":
         viz_type = 'velocity'
     elif dvp == "d":
@@ -337,10 +323,31 @@ def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,sa
 
     # Create output directory
     if os.path.exists(output_folder):
-        print(f'Path exists {output_folder}')
+        print(f'Folder path exists {output_folder}')
     if not os.path.exists(output_folder):
         print("creating output folder")
         os.makedirs(output_folder)
+
+    # Check if output files already exist
+    if os.path.exists(output_path):
+        print(f'File path exists {output_path}; Do not re-make')
+        print("")
+        return
+    else:
+        print(f'File path does not exist {output_path}; creating new file')
+        print("")
+    
+    # Get input data
+    components_data = []
+    component_names = ["mag","x","y","z"]
+    for i in range(len(component_names)):
+        if dvp == "p" and i>0:
+            break
+        file_str = dvp+"_"+component_names[i]+".npz"
+        print(f"Opening {file_str}")
+        component_file = [file for file in os.listdir(formatted_data_folder) if file_str in file]
+        component_data = np.load(formatted_data_folder+"/"+component_file[0])['component']
+        components_data.append(component_data)
 
     #read in the fsi mesh:
     fsi_mesh = h5py.File(meshFile,'r')
@@ -364,10 +371,11 @@ def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,sa
     # Get number of timesteps
     num_ts = components_data[0].shape[1]    
 
-    # Remove old file path
-    if os.path.exists(output_path):
-        print(f'File path exists {output_path}; rewriting')
-        os.remove(output_path)
+    # NOTE: Comment out for now as we do not necessary wanr to overwrite the file 18/05/2023 Kei
+    # # Remove old file path
+    # if os.path.exists(output_path):
+    #     print(f'File path exists {output_path}; rewriting')
+    #     os.remove(output_path)
     # Create H5 file
     vectorData = h5py.File(output_path,'a')
 
@@ -467,9 +475,9 @@ def reduce_save_deg_viz(formatted_data_folder, output_folder, meshFile,save_deg,
 
     # Create output directory
     if os.path.exists(output_folder):
-        print(f'Path exists {output_folder}')
+        print(f'Folder path exists {output_folder}')
     if not os.path.exists(output_folder):
-        print("creating output folder")
+        print("Creating output folder")
         os.makedirs(output_folder)
 
     #read in the fsi mesh:
@@ -583,10 +591,10 @@ def extract_time_steps(formatted_data_folder, output_folder, start_t, end_t, str
     if os.path.exists(output_folder):
         pass
     elif os.path.exists(output_path):
-        print(f'File path exists {output_path}; rewriting')
+        print(f'Path exists: {output_path}; rewriting')
         os.remove(output_path)
     else:
-        print(f'File path does not exist {output_path}; creating new file')
+        print(f'Path does not exist {output_path}; creating new file')
         os.makedirs(output_folder)
     # Create H5 file
     vectorData = h5py.File(output_path,'a')
@@ -626,26 +634,7 @@ def extract_time_steps(formatted_data_folder, output_folder, start_t, end_t, str
 
 def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_between_files,start_t,dvp,lowcut=0,highcut=100000,amplitude=False):
 
-    # Get input data
-    components_data = []
-
-    if dvp == "d" or dvp == "v":
-        component_names = ["mag","x","y","z"]
-    elif dvp == "strain":
-        component_names = ["11","12","22","23","33","31"]
-    else:
-        component_names = ["mag"]
-
-    for i in range(len(component_names)):
-        file_str = dvp+"_"+component_names[i]+".npz"
-        print("Opened file: " + file_str)
-        component_file = [file for file in os.listdir(formatted_data_folder) if file_str in file]
-        component_data = np.load(formatted_data_folder+"/"+component_file[0])['component']
-        components_data.append(component_data)
-
-
     # Create name for output file, define output path
-
     if dvp == "v":
         viz_type = 'velocity'
     elif dvp == "d":
@@ -669,10 +658,35 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
 
     # Create output directory
     if os.path.exists(output_folder):
-        print(f'Path exists {output_folder}')
-    if not os.path.exists(output_folder):
+        print(f'Folder path exists {output_folder}')
+    else:
         print("creating output folder")
         os.makedirs(output_folder)
+
+    # Check if output files already exist
+    if os.path.exists(output_path):
+        print(f'File path exists {output_path}; Do not re-make')
+        print("")
+        return
+    else:
+        print(f'File path does not exist {output_path}; creating new file')
+        print("")
+    
+     # Get input data
+    components_data = []
+    if dvp == "d" or dvp == "v":
+        component_names = ["mag","x","y","z"]
+    elif dvp == "strain":
+        component_names = ["11","12","22","23","33","31"]
+    else:
+        component_names = ["mag"]
+
+    for i in range(len(component_names)):
+        file_str = dvp+"_"+component_names[i]+".npz"
+        print("Openning file: " + file_str)
+        component_file = [file for file in os.listdir(formatted_data_folder) if file_str in file]
+        component_data = np.load(formatted_data_folder+"/"+component_file[0])['component']
+        components_data.append(component_data)
 
     #read in the mesh (for mps this needs to be the wall only mesh):
     fsi_mesh = h5py.File(meshFile,'r')
@@ -694,10 +708,11 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
     # Get number of timesteps
     num_ts = components_data[0].shape[1]    
 
-    # Remove old file path
-    if os.path.exists(output_path):
-        print(f'File path exists {output_path}; rewriting')
-        os.remove(output_path)
+    # NOTE: Comment out for now as we do not necessary wanr to overwrite the file 18/05/2023 Kei
+    # # Remove old file path
+    # if os.path.exists(output_path):
+    #     print(f'File path exists {output_path}; rewriting')
+    #     os.remove(output_path)
     # Create H5 file
     vectorData = h5py.File(output_path,'a')
 
@@ -714,10 +729,10 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
     topoArray[...] = topoArrayFSI
 
     # if lowcut exists, use a hi-pass filter on the results.
-    print("Filtering data...")
+    print("===Filtering data===")
     for idy in range(nNodesFSI):
         if idy%1000 == 0:
-            print("... band pass filtering")
+            print("band pass filtering node " + str(idy) + " of " + str(nNodesFSI) + " nodes")
         
         f_crit = int(1/time_between_files)/2 - 1
         if highcut >=f_crit:
@@ -728,8 +743,7 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
             else:
                 btype="band"
             components_data[ic][idy,:] = spec.butter_bandpass_filter(components_data[ic][idy,:], lowcut=lowcut, highcut=highcut, fs=int(1/time_between_files)-1,btype=btype)
-            if idy%1000 == 0:
-                print(btype + str(lowcut) + str(highcut))
+            
     # if amplitude is selected, calculate moving RMS amplitude for the results                
     if amplitude==True:
         RMS_Magnitude = np.zeros((nNodesFSI,num_ts))
@@ -737,7 +751,7 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
         window_size = 250 # this is ~1/4 the value used in the spectrograms (992) ...     
         for idy in range(nNodesFSI):
             if idy%1000 == 0:
-                print("... calculating amplitude")
+                print("alculating amplitude for node " + str(idy) + " of " + str(nNodesFSI) + " nodes")
             for ic in range(len(component_names)):
                 components_data[ic][idy,:] = window_rms(components_data[ic][idy,:],window_size) # For pressure
 
@@ -1015,11 +1029,9 @@ def create_fixed_xdmf_file(time_values,nElements,nNodes,attType,viz_type,h5_file
     xdmf_file.writelines(lines) 
     xdmf_file.close() 
 
-
-def create_transformed_matrix(input_path, output_folder,meshFile, case_name, start_t,end_t,dvp,stride=1):
+def create_transformed_matrix(input_path, output_folder, meshFile, case_name, start_t,end_t,dvp,stride=1):
     # Create name for case, define output path
-    print('Creating matrix for case {}...'.format(case_name))
-    output_folder = output_folder
+    print('Creating matrix for {}...'.format(case_name))
 
     # Create output directory
     if os.path.exists(output_folder):
@@ -1035,17 +1047,17 @@ def create_transformed_matrix(input_path, output_folder,meshFile, case_name, sta
 
     # Get name of xdmf file
     if dvp == 'd':
-        xdmf_file = input_path + '/displacement.xdmf' # Change
+        xdmf_file = os.path.join(input_path, 'displacement.xdmf')
     elif dvp == 'v':
-        xdmf_file = input_path + '/velocity.xdmf' # Change
+        xdmf_file = os.path.join(input_path, 'velocity.xdmf')
     elif dvp == 'p':
-        xdmf_file = input_path + '/pressure.xdmf' # Change
+        xdmf_file = os.path.join(input_path, 'pressure.xdmf')
     elif dvp == 'wss':
-        xdmf_file = input_path + '/WSS_ts.xdmf' # Change
+        xdmf_file = os.path.join(input_path, 'WSS_ts.xdmf')
     elif dvp == 'mps':
-        xdmf_file = input_path + '/MaxPrincipalStrain.xdmf' # Change
+        xdmf_file = os.path.join(input_path, 'MaxPrincipalStrain.xdmf')
     elif dvp == 'strain':
-        xdmf_file = input_path + '/InfinitesimalStrain.xdmf' # Change
+        xdmf_file = os.path.join(input_path, 'InfinitesimalStrain.xdmf')
     else:
         print('input d, v, p, mps, strain or wss for dvp')
 
@@ -1079,7 +1091,7 @@ def create_transformed_matrix(input_path, output_folder,meshFile, case_name, sta
     time_between_files = time_ts[2] - time_ts[1] # Calculate the time between files from xdmf file
 
     # Open up the first h5 file to get the number of timesteps and nodes for the output data
-    file = input_path +  h5_ts[0]
+    file = os.path.join(input_path, h5_ts[0])
     vectorData = h5py.File(file) 
     if dvp == "wss" or dvp == "mps" or dvp == "strain":
         ids = list(range(len(vectorData['VisualisationVector/0'][:])))
@@ -1277,7 +1289,45 @@ def get_eig(T):
     #eig = as_tensor([[lambda1 ,0 ,0],[0 ,lambda2 ,0],[0 ,0 ,lambda3]])
     return lambda1 #, lambda2, lambda3
 
+def get_time_between_files(input_path, dvp):
+    
+    # Get name of xdmf file
+    if dvp == 'd':
+        xdmf_file = os.path.join(input_path, 'displacement.xdmf')
+    elif dvp == 'v':
+        xdmf_file = os.path.join(input_path, 'velocity.xdmf')
+    elif dvp == 'p':
+        xdmf_file = os.path.join(input_path, 'pressure.xdmf')
+    elif dvp == 'wss':
+        xdmf_file = os.path.join(input_path, 'WSS_ts.xdmf')
+    elif dvp == 'mps':
+        xdmf_file = os.path.join(input_path, 'MaxPrincipalStrain.xdmf')
+    elif dvp == 'strain':
+        xdmf_file = os.path.join(input_path, 'InfinitesimalStrain.xdmf')
+    else:
+        print('input d, v, p, mps, strain or wss for dvp')
 
+    # If the simulation has been restarted, the output is stored in multiple files and may not have even temporal spacing
+    # This loop determines the file names from the xdmf output file
+    file1 = open(xdmf_file, 'r') 
+    Lines = file1.readlines() 
+    time_ts=[]
+    
+    # This loop goes through the xdmf output file and gets the time value (time_ts), associated 
+    # .h5 file (h5_ts) and index of each timestep inthe corresponding h5 file (index_ts)
+    for line in Lines: 
+        if '<Time Value' in line:
+            time_pattern = '<Time Value="(.+?)"'
+            time_str = re.findall(time_pattern, line)
+            time = float(time_str[0])
+            time_ts.append(time)
+        else:
+            continue
+
+    # Calculate the time between files from xdmf file
+    time_between_files = time_ts[2] - time_ts[1] 
+
+    return time_between_files
 
 if __name__ == "__main__":
     print('See functions.')
