@@ -65,8 +65,11 @@ def fix_fluid_only_mesh(meshFile):
     fluid_mesh_path_fixed =  meshFile.replace(".h5","_fluid_only_fixed.h5")    
 
     # Fix Fluid topology
+    count = 0
     for node_id in range(len(fluidIDs)):
-        print(node_id)
+        count += 1
+        if count % 100 == 0:
+            print(f"Reading node {node_id} of {len(fluidIDs)}")
         fluidTopology = np.where(fluidTopology == fluidIDs[node_id], node_id, fluidTopology)
 
     shutil.copyfile(fluid_mesh_path, fluid_mesh_path_fixed)
