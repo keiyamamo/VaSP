@@ -751,7 +751,7 @@ def create_hi_pass_viz(formatted_data_folder, output_folder, meshFile,time_betwe
         window_size = 250 # this is ~1/4 the value used in the spectrograms (992) ...     
         for idy in range(nNodesFSI):
             if idy%1000 == 0:
-                print("alculating amplitude for node " + str(idy) + " of " + str(nNodesFSI) + " nodes")
+                print("Calculating amplitude for node " + str(idy) + " of " + str(nNodesFSI) + " nodes")
             for ic in range(len(component_names)):
                 components_data[ic][idy,:] = window_rms(components_data[ic][idy,:],window_size) # For pressure
 
@@ -897,7 +897,8 @@ def window_rms(a, window_size,window_type="flat"): # Changed from "flat" to "bla
         print('Did not recognize window type, using flat')
         window = np.ones(window_size)/float(window_size)
     # https://stackoverflow.com/questions/47484899/moving-average-produces-array-of-different-length
-    RMS = np.sqrt(np.convolve(a2, window,mode="valid"))
+    # RMS = np.sqrt(np.convolve(a2, window,mode="valid"))
+    RMS = np.sqrt(signal.fftconvolve(a2, window, mode="valid"))
     len_RMS = len(RMS)
     len_a2 = len(a2)
     pad_length = int((len_a2-len_RMS)/2)
