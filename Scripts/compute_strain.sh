@@ -1,6 +1,6 @@
 #!/bin/bash
 # Job name:
-#SBATCH --job-name=d_compute_stress_wss
+#SBATCH --job-name=compute_strain
 #
 # Max running time (DD-HH:MM:SS)
 #SBATCH --time=0-02:00:00 
@@ -8,8 +8,8 @@
 # Project:
 #SBATCH --account=nn9249k
 
-#SBATCH --ntasks=1
-#SBATCH --mem-per-cpu=2G
+#SBATCH --ntasks=4
+#SBATCH --mem-per-cpu=1G
 #SBATCH --cpus-per-task=1  # make sure that it is the same as "OMP_NUM_THREADS"
 #SBATCH --output=/cluster/home/keiya/log/%x-%j.txt
 
