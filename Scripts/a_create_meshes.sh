@@ -3,7 +3,7 @@
 #SBATCH --job-name=a_create_meshes
 #
 # Max running time (DD-HH:MM:SS)
-#SBATCH --time=0-02:00:00 
+#SBATCH --time=0-01:00:00 
 #
 # Project:
 #SBATCH --account=nn9249k
@@ -18,8 +18,7 @@ set -o errexit  # Exit the script on any error
 set -o nounset  # Treat any unset variables as an error
 
 module --quiet purge  # Reset the modules to the system default
-source /cluster/shared/fenics/conf/fenics-2019.1.0.saga.intel.conf
-module list
+source /cluster/shared/fenics/conf/fenics-2019.2.0.dev0.saga.foss-2022a-py3.10.conf
 
 # point to config file on the command line, like this: sbatch d_execute.sh path/to/config.config
 config_file=$1
@@ -28,10 +27,10 @@ echo "config_file: $config_file"
 
 # Run postprocessing scripts
 str="Creating meshes for postprocessing!"
-echo $str
+# echo $str
 
-# python $workflow_location/postprocessing_mesh/Create_Refined_Mesh.py --case=$case_path --mesh=$mesh_path
-# python $workflow_location/postprocessing_mesh/Create_Solid_Only_Mesh.py --case=$case_path --mesh=$mesh_path
-# python $workflow_location/postprocessing_mesh/Create_Fluid_Only_Mesh.py --case=$case_path --mesh=$mesh_path
-# python $workflow_location/postprocessing_mesh/Create_Solid_Only_Mesh.py --case=$case_path --mesh=$refined_mesh_path
-python -u $workflow_location/postprocessing_mesh/Create_Fluid_Only_Mesh.py --case=$case_path --mesh=$refined_mesh_path
+python ${workflow_location}/postprocessing_mesh/Create_Refined_Mesh.py --case=$case_path --mesh=$mesh_path
+python ${workflow_location}/postprocessing_mesh/Create_Solid_Only_Mesh.py --case=$case_path --mesh=$mesh_path
+python ${workflow_location}/postprocessing_mesh/Create_Fluid_Only_Mesh.py --case=$case_path --mesh=$mesh_path
+python ${workflow_location}/postprocessing_mesh/Create_Solid_Only_Mesh.py --case=$case_path --mesh=$refined_mesh_path
+python ${workflow_location}/postprocessing_mesh/Create_Fluid_Only_Mesh.py --case=$case_path --mesh=$refined_mesh_path
