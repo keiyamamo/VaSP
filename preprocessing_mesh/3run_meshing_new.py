@@ -19,7 +19,7 @@ def arg_parser():
     parser.add_argument('--mesh', type=str, default='dab_mesh', help='mesh name')
     parser.add_argument('-ef', '--target_edge_length_f', type=float, default=0.280, help='target edge length for fluid mesh')
     parser.add_argument('-es','--target_edge_length_s', type=float, default=0.300, help='target edge length for solid mesh')
-    parser.add_argument('--thick_solid', type=float, default=0.25, help='thick solid')
+    parser.add_argument('-ts', '--thick_solid', type=float, default=0.25, help='thickness solid')
     parser.add_argument('--nb_boundarylayers', type=int, default=2, help='nb boundarylayers')
     parser.add_argument('--seedX', type=float, nargs=3, default=(123.099, 134.62, 64.087), help='seedX')
     return parser.parse_args()
