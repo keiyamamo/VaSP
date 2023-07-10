@@ -371,7 +371,7 @@ def create_domain_specific_viz(formatted_data_folder, output_folder, meshFile,sa
     # Get number of timesteps
     num_ts = components_data[0].shape[1]    
 
-    # NOTE: Comment out for now as we do not necessary wanr to overwrite the file 18/05/2023 Kei
+    # NOTE: Comment out for now as we do not necessary want to overwrite the file 18/05/2023 Kei
     # # Remove old file path
     # if os.path.exists(output_path):
     #     print(f'File path exists {output_path}; rewriting')

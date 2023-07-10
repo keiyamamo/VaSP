@@ -93,7 +93,7 @@ def create_visualizations(case_path, mesh_name, save_deg, stride, ts, start_t, e
         # Create the visualization files
         print("===Creating domain specific visualization files===")
         print("")
-        postprocessing_common_h5py.create_domain_specific_viz(formatted_data_folder, visualization_separate_domain_folder, mesh_path,save_deg, time_between_output_files,start_t,dvp)
+        postprocessing_common_h5py.create_domain_specific_viz(formatted_data_folder, visualization_separate_domain_folder, mesh_path, save_deg, time_between_output_files,start_t,dvp)
 
         # TODO: here mesh_path should be the mesh_path_sd1 ?
         # NOTE: For now, reduce_save_deg_viz is not necessary and skip it 18/05/2023 Kei 
