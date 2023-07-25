@@ -281,6 +281,7 @@ class vmtkMeshGeneratorFsi(pypes.pypeScript):
             tetgen.OutputVolumeElements = 1
             tetgen.RegionAttrib = 0
             tetgen.Verbose = 1
+            tetgen.Epsilon = 1e-10
             tetgen.Execute()
 
             # ADDING CELL IDs

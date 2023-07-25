@@ -12,10 +12,10 @@ def h52pvd(mesh_file: str) -> None:
     hdf = HDF5File(mesh.mpi_comm(), mesh_file, "r")
     hdf.read(mesh, "/mesh", False)
     #NOTE: this is the test
-    # x = mesh.coordinates()
-    # scaling_factor = 1000  # from m to mm
-    # x[:, :] *= scaling_factor
-    # mesh.bounding_box_tree().build(mesh)
+    x = mesh.coordinates()
+    scaling_factor = 1000  # from m to mm
+    x[:, :] *= scaling_factor
+    mesh.bounding_box_tree().build(mesh)
 
     boundaries = MeshFunction("size_t", mesh, 2)
     hdf.read(boundaries, "/boundaries")
@@ -35,6 +35,6 @@ def h52pvd(mesh_file: str) -> None:
 if __name__ == "__main__":
 
     parser = ArgumentParser()
-    parser.add_argument('--case', type=str, help="path to the file", metavar="PATH")
+    parser.add_argument('--i', type=str, help="path to the file", metavar="PATH")
     args = parser.parse_args()
-    h52pvd(args.case)
+    h52pvd(args.i)

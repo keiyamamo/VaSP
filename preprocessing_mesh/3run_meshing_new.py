@@ -5,9 +5,7 @@ from vmtkmeshgeneratorfsi import *
 from vmtkthreshold import *
 from vmtkentityrenumber import *
 
-from os import path, listdir, remove
-from pathlib import Path
-import time
+from os import path, remove
 import vmtk #import vmtkscripts
 import vtk
 import numpy as np
@@ -15,8 +13,7 @@ import argparse
 
 def arg_parser():
     parser = argparse.ArgumentParser(description='Run meshing')
-    parser.add_argument('--case', type=str, default='case9_300k/', help='case name')
-    parser.add_argument('--mesh', type=str, default='dab_mesh', help='mesh name')
+    parser.add_argument('--i', type=str, help= "path to thee input file")
     parser.add_argument('-ef', '--target_edge_length_f', type=float, default=0.280, help='target edge length for fluid mesh')
     parser.add_argument('-es','--target_edge_length_s', type=float, default=0.300, help='target edge length for solid mesh')
     parser.add_argument('-ts', '--thick_solid', type=float, default=0.25, help='thickness solid')
@@ -27,19 +24,27 @@ def arg_parser():
 
 def main():
     args = arg_parser()
-    case = args.case
-    mesh = args.mesh
+    
+    
     TargetEdgeLength_f = args.target_edge_length_f
     TargetEdgeLength_s = args.target_edge_length_s
     Thick_solid = args.thick_solid
     nb_boundarylayers = args.nb_boundarylayers
     seedX = args.seedX
-    clip_surface=False
     
-    ifile_surface = "surfaces/" + case + mesh+".stl"
-    ofile_mesh = "surfaces/" + case + mesh
+    
+    ifile_surface = args.i
+    case_name = ifile_surface.rsplit(path.sep, 1)[-1].rsplit('.')[0]
+    dir_path = ifile_surface.rsplit(path.sep, 1)[0]
+    base_path = path.join(dir_path, case_name)
+    
     # check if output file already exists and delete it if it does
-    output_files = [ofile_mesh+"_fsi.vtu", ofile_mesh+"_fsi.xml", ofile_mesh+"_cfd.vtu", ofile_mesh+"_cfd.xml"]
+    fsi_mesh_paraview = base_path + "_fsi.vtu"
+    cfd_mesh_paraview = base_path + "_cfd.vtu"
+    fsi_mesh_fenics = base_path + "_fsi.xml"
+    cfd_mesh_fenics = base_path + "_cfd.xml"
+
+    output_files = [fsi_mesh_paraview, cfd_mesh_paraview, fsi_mesh_fenics, cfd_mesh_fenics]
     for file in output_files:
         if path.exists(file):
             remove(file)
@@ -60,17 +65,7 @@ def main():
     reader.Execute()
     surface = reader.Surface
     ################################################################################
-    if clip_surface:
-        clipp = vmtkscripts.vmtkSurfaceClipper()
-        clipp.Surface = surface
-        clipp.Execute()
-        surface = clipp.Surface
-        writ = vmtkscripts.vmtkSurfaceWriter()
-        writ.Surface=surface
-        writ.Format='stl'
-        writ.OutputFileName = "surfaces/"+file_name+"_clipped.stl"
-        writ.Execute()
-
+   
     N = surface.GetNumberOfPoints()
     dist_array = np.zeros(N)
     # Compute distance
@@ -144,7 +139,7 @@ def main():
 
     # Write mesh in VTU format #####################################################
     writer = vtk.vtkXMLUnstructuredGridWriter()
-    writer.SetFileName(path.join(ofile_mesh + "_fsi.vtu"))
+    writer.SetFileName(fsi_mesh_paraview)
     writer.SetInputData(mesh)
     writer.Update()
     writer.Write()
@@ -154,7 +149,7 @@ def main():
     meshWriter = vmtkscripts.vmtkMeshWriter()
     meshWriter.CellEntityIdsArrayName = "CellEntityIds"
     meshWriter.Mesh = mesh
-    meshWriter.OutputFileName = path.join(ofile_mesh + "_fsi.xml")
+    meshWriter.OutputFileName = fsi_mesh_fenics
     meshWriter.WriteRegionMarkers = 1
     meshWriter.Compressed = 0
     meshWriter.Execute()
@@ -187,7 +182,7 @@ def main():
     meshWriter = vmtkscripts.vmtkMeshWriter()
     meshWriter.CellEntityIdsArrayName = "CellEntityIds"
     meshWriter.Mesh = thresh.Mesh 
-    meshWriter.OutputFileName = path.join(ofile_mesh + "_cfd.xml")
+    meshWriter.OutputFileName = cfd_mesh_fenics
     meshWriter.WriteRegionMarkers = 1
     meshWriter.Compressed = 0
     meshWriter.Execute()
@@ -195,7 +190,7 @@ def main():
 
     # Write mesh in VTU format #####################################################
     writer = vtk.vtkXMLUnstructuredGridWriter()
-    writer.SetFileName(path.join(ofile_mesh + "_cfd.vtu"))
+    writer.SetFileName(cfd_mesh_paraview)
     writer.SetInputData(thresh.Mesh)
     writer.Update()
     writer.Write()
