@@ -3,19 +3,20 @@ import numpy as np
 import h5py
 import shutil
 import os
+from pathlib import Path
 
 def read_command_line():
     """Read arguments from commandline"""
     parser = ArgumentParser()
 
-    parser.add_argument('--case', type=str, default="cyl_test", help="Path to simulation results",
-                        metavar="PATH")
+    parser.add_argument('--fp', "-folder_path",  type=Path, help="Path to simulation results",
+                        )
     parser.add_argument('--mesh', type=str, default="file_stenosis", help="Mesh File Name",
                         metavar="PATH")
 
     args = parser.parse_args()
 
-    return args.case, args.mesh
+    return args.fp, args.mesh
 
 
 def get_domain_topology(meshFile):
