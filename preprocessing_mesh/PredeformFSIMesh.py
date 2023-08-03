@@ -1,47 +1,55 @@
-import common_meshing
+# File under GNU GPL (v3) licence, see LICENSE file for details.
+# This software is distributed WITHOUT ANY WARRANTY; without even
+# the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+# PURPOSE.
+
+"""
+This script is used to predeform the mesh for the FSI simulation. 
+It is assumed that the simulation has already been run and the displacement is available as the displacement.h5 file.
+By applying the reverse of the displacement to the original mesh, we can obtain the predeformed mesh.
+"""
+
+
+from argparse import ArgumentParser
+from os import path
 import h5py
 from shutil import copyfile
-from numpy import genfromtxt
-import numpy as np
-import common_meshing
-
-# User inputs ----------------------------
-scaleFactor=-1.0  # This is the factor used to scale the deformation
-folder, mesh_name = common_meshing.read_command_line()
-
-# -----------------------------------
-disp_filepath = folder +"/"+ mesh_name +'/1/Visualization/displacement.h5'
-mesh_path = folder + '/mesh/' + mesh_name +".h5"
-# -----------------------------------------
-
-dt = 0.00033964285714285700
-t = 0.45
-
-index_t = int(np.round(t/dt))
-print(disp_filepath)
-
-vectorData = h5py.File(disp_filepath, "r") 
-ArrayName = 'VisualisationVector/' + str(index_t)	
-deformation = vectorData[ArrayName][:,:] # Important not to take slices of this array, slows code considerably... 
-
-predeformed_mesh_path=mesh_path.replace(".h5", "_predeformed.h5")
-copyfile(mesh_path, predeformed_mesh_path)
-
-#f = HDF5File(mpi_comm_world(),'meshes/'+mesh_name, 'r')
-#mesh_file = Mesh()
-#f.read(mesh, 'mesh')
-
-vectorData = h5py.File(predeformed_mesh_path,'a')
-
-ArrayNames = ['boundaries/coordinates','mesh/coordinates','domains/coordinates']
 
 
-#hdf5_store = h5py.File("meshes/deformed_"+meshname+'.h5', "w")
+def predeform_mesh():
 
-for ArrayName in ArrayNames:
+	parser = ArgumentParser()
+	parser.add_argument('--folder', type=str, help="Path to simulation results")
 
-	vectorArray = vectorData[ArrayName]
-	modified = vectorData[ArrayName][:,:] + deformation*scaleFactor
-	vectorArray[...] = modified
+	folder_path = parser.parse_args().folder
 
-vectorData.close() 
+	# Path to the displacement file
+	disp_path = path.join(folder_path, "Visualization", "displacement.h5")
+	mesh_path = path.join(folder_path, "Checkpoint", "mesh.h5")
+	
+	# Read the displacement file and get the displacement from the last time step
+	vectorData = h5py.File(disp_path, "r") 
+	number_of_datasets = len(vectorData["VisualisationVector"].keys())
+	disp_array = vectorData[f"VisualisationVector/{number_of_datasets - 1}"][:, :]
+	
+	# Create a copy of the mesh file with a new name
+	predeformed_mesh_path = mesh_path.replace(".h5", "_predeformed.h5")
+	copyfile(mesh_path, predeformed_mesh_path)
+
+	# Open the new mesh file in append mode
+	vectorData = h5py.File(predeformed_mesh_path, 'a')
+
+	# We modify the original geometry by adding the reverse of the displacement
+	# Hence, scaleFactor = -1.0
+	scaleFactor = -1.0  
+
+	ArrayNames = ['mesh/coordinates', 'domains/coordinates', 'boundaries/coordinates']
+	for ArrayName in ArrayNames:
+		vectorArray = vectorData[ArrayName]
+		modified = vectorData[ArrayName][:,:] + disp_array * scaleFactor
+		vectorArray[...] = modified
+
+	vectorData.close()
+
+if __name__ == '__main__':
+	predeform_mesh()
