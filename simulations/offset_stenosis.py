@@ -1,15 +1,15 @@
 """
 Problem file for offset stenosis FSI simulation
 """
-from dolfin import *
-import os, math
-from turtleFSI.problems import *
-from utils.Womersley import make_womersley_bcs_from_coefficients, compute_boundary_geometry_acrn
+import os
 import numpy as np
-from numpy import genfromtxt
-from os import path, makedirs, getcwd
-from pprint import pprint
 import configparser
+
+from Womersley import make_womersley_bcs_from_coefficients, compute_boundary_geometry_acrn
+
+from turtleFSI.problems import *
+from dolfin import *
+
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
 parameters["form_compiler"]["optimize"] = True
@@ -193,7 +193,7 @@ def create_bcs(t, v_, DVP, mesh, boundaries, domains, mu_f,
     normal = ni/n_len
 
     # Load fourier coefficients and scale by flow rate
-    An, Bn = np.loadtxt(path.join(path.dirname(path.abspath(__file__)), FC_file)).T
+    An, Bn = np.loadtxt(os.path.join(os.path.dirname(os.path.abspath(__file__)), FC_file)).T
     # Convert to complex fourier coefficients
     Cn = (An - Bn*1j)*Q_mean
 
@@ -224,7 +224,7 @@ def create_bcs(t, v_, DVP, mesh, boundaries, domains, mu_f,
 
 
     # Load fourier coefficients and scale by flow rate
-    An_P, Bn_P = np.loadtxt(path.join(path.dirname(path.abspath(__file__)), P_FC_File)).T
+    An_P, Bn_P = np.loadtxt(os.path.join(os.path.dirname(os.path.abspath(__file__)), P_FC_File)).T
 
     dSS = Measure("dS", domain=mesh, subdomain_data=boundaries)
     p_out_bc_val = InnerP(t=0.0, t_ramp=0.2, An=An_P, Bn=Bn_P, period=T_Cycle, P_mean=P_mean, degree=p_deg)
