@@ -64,7 +64,7 @@ def set_problem_parameters(default_variables, **namespace):
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
         dx_s_id=2,  # ID of marker in the solid domain
         # FSI parameters
-        fsi_x_range= [-0.004, 0.004],  # range of x coordinates for fsi region
+        fsi_x_range= [-0.004, 0.009],  # range of x coordinates for fsi region
         # Simulation parameters
         folder="offset_stenosis_results",  # Folder name generated for the simulation
         mesh_path="mesh/file_stenosis.h5",
