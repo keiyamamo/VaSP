@@ -37,10 +37,10 @@ def set_problem_parameters(default_variables, **namespace):
         checkpoint_step=50,  # Save frequency of checkpoint files
         # Linear solver parameters
         linear_solver="mumps",
-        atol=1e-10,  # Absolute tolerance in the Newton solver
-        rtol=1e-9,  # Relative tolerance in the Newton solver
+        atol=1e-8,  # Absolute tolerance in the Newton solver
+        rtol=1e-8,  # Relative tolerance in the Newton solver
         recompute=20,  # Recompute the Jacobian matix within time steps
-        recompute_tstep=50,  # Recompute the Jacobian matix over time steps
+        recompute_tstep=20,  # Recompute the Jacobian matix over time steps
         # boundary condition parameters
         inlet_id=2,  # inlet id for the fluid
         inlet_outlet_s_id=11,  # inlet and outlet id for solid
@@ -48,7 +48,7 @@ def set_problem_parameters(default_variables, **namespace):
         rigid_id=11,  # "rigid wall" id for the fluid
         outer_id=33,  # id for the outer surface of the solid
         # Fluid parameters
-        Q_mean=2.5E-06,
+        Q_mean=1.0E-04,
         P_mean=11200,
         T_Cycle=0.951,  # Used to define length of flow waveform
         rho_f=[1.000E3, 1.000E3],  # Fluid density [kg/m3]
@@ -64,7 +64,7 @@ def set_problem_parameters(default_variables, **namespace):
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
         dx_s_id=2,  # ID of marker in the solid domain
         # FSI parameters
-        fsi_x_range= [-0.004, 0.009],  # range of x coordinates for fsi region
+        fsi_x_range= [0.006, 0.016],  # range of x coordinates for fsi region
         # Simulation parameters
         folder="offset_stenosis_results",  # Folder name generated for the simulation
         mesh_path="mesh/file_stenosis.h5",
