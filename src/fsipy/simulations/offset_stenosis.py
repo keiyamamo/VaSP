@@ -52,7 +52,7 @@ def set_problem_parameters(default_variables, **namespace):
         P_mean=11200,
         T_Cycle=0.951,  # Used to define length of flow waveform
         rho_f=[1.000E3, 1.000E3],  # Fluid density [kg/m3]
-        mu_f=[7.0E-2, 7.0E-2],  # Fluid dynamic viscosity [Pa.s]
+        mu_f=[3.5E-3, 7.0E-2],  # Fluid dynamic viscosity [Pa.s]
         dx_f_id=[1, 1001],  # ID of marker in the fluid domain
         # mesh lifting parameters (see turtleFSI for options)
         extrapolation="laplace",
@@ -102,7 +102,7 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_x_range, dx_f_id, fsi_id, rigi
         i += 1
 
     # In this region, make fluid more viscous
-    x_min = 0.023
+    x_min = 0.018
     i = 0
     for cell in cells(mesh):
         idx_cell = domains.array()[i]
