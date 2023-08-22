@@ -37,8 +37,8 @@ def set_problem_parameters(default_variables, **namespace):
         checkpoint_step=50,  # Save frequency of checkpoint files
         # Linear solver parameters
         linear_solver="mumps",
-        atol=1e-8,  # Absolute tolerance in the Newton solver
-        rtol=1e-8,  # Relative tolerance in the Newton solver
+        atol=1e-6,  # Absolute tolerance in the Newton solver
+        rtol=1e-6,  # Relative tolerance in the Newton solver
         recompute=20,  # Recompute the Jacobian matix within time steps
         recompute_tstep=20,  # Recompute the Jacobian matix over time steps
         # boundary condition parameters
@@ -48,7 +48,7 @@ def set_problem_parameters(default_variables, **namespace):
         rigid_id=11,  # "rigid wall" id for the fluid
         outer_id=33,  # id for the outer surface of the solid
         # Fluid parameters
-        Q_mean=1.0E-04,
+        Q_mean=2.5E-06,
         P_mean=11200,
         T_Cycle=0.951,  # Used to define length of flow waveform
         rho_f=[1.000E3, 1.000E3],  # Fluid density [kg/m3]
@@ -64,14 +64,14 @@ def set_problem_parameters(default_variables, **namespace):
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
         dx_s_id=2,  # ID of marker in the solid domain
         # FSI parameters
-        fsi_x_range= [0.006, 0.016],  # range of x coordinates for fsi region
+        fsi_x_range= [-0.002, 0.016],  # range of x coordinates for fsi region
         # Simulation parameters
         folder="offset_stenosis_results",  # Folder name generated for the simulation
         mesh_path="mesh/file_stenosis.h5",
         FC_file="FC_MCA_10",  # File name containing the fourier coefficients for the flow waveform
         P_FC_File="FC_Pressure",  # File name containing the fourier coefficients for the pressure waveform
         compiler_parameters=_compiler_parameters,  # Update the defaul values of the compiler arguments (FEniCS)
-        save_deg=2,  # Degree of the functions saved for visualisation
+        save_deg=1,  # Degree of the functions saved for visualisation
     ))
 
     return default_variables
