@@ -42,7 +42,7 @@ def set_problem_parameters(default_variables, **namespace):
         recompute=20,  # Recompute the Jacobian matix within time steps
         recompute_tstep=20,  # Recompute the Jacobian matix over time steps
         # boundary condition parameters
-        inlet_id=2,  # inlet id for the fluid
+        inlet_id=3,  # inlet id for the fluid
         inlet_outlet_s_id=11,  # inlet and outlet id for solid
         fsi_id=22,  # id for fsi surface
         rigid_id=11,  # "rigid wall" id for the fluid
@@ -71,7 +71,7 @@ def set_problem_parameters(default_variables, **namespace):
         FC_file="FC_MCA_10",  # File name containing the fourier coefficients for the flow waveform
         P_FC_File="FC_Pressure",  # File name containing the fourier coefficients for the pressure waveform
         compiler_parameters=_compiler_parameters,  # Update the defaul values of the compiler arguments (FEniCS)
-        save_deg=1,  # Degree of the functions saved for visualisation
+        save_deg=2,  # Degree of the functions saved for visualisation
     ))
 
     return default_variables
@@ -102,7 +102,7 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_x_range, dx_f_id, fsi_id, rigi
         i += 1
 
     # In this region, make fluid more viscous
-    x_min = 0.018
+    x_min = 0.020
     i = 0
     for cell in cells(mesh):
         idx_cell = domains.array()[i]
