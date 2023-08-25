@@ -52,7 +52,7 @@ def set_problem_parameters(default_variables, **namespace):
         P_mean=11200,
         T_Cycle=0.951,  # Used to define length of flow waveform
         rho_f=[1.000E3, 1.000E3],  # Fluid density [kg/m3]
-        mu_f=[3.5E-3, 7.0E-2],  # Fluid dynamic viscosity [Pa.s]
+        mu_f=[1.5E-3, 1.0E-2],  # Fluid dynamic viscosity [Pa.s]
         dx_f_id=[1, 1001],  # ID of marker in the fluid domain
         # mesh lifting parameters (see turtleFSI for options)
         extrapolation="laplace",
@@ -64,7 +64,7 @@ def set_problem_parameters(default_variables, **namespace):
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
         dx_s_id=2,  # ID of marker in the solid domain
         # FSI parameters
-        fsi_x_range= [-0.002, 0.016],  # range of x coordinates for fsi region
+        fsi_x_range= [0.0, 0.016],  # range of x coordinates for fsi region
         # Simulation parameters
         folder="offset_stenosis_results",  # Folder name generated for the simulation
         mesh_path="mesh/file_stenosis.h5",
@@ -88,7 +88,7 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_x_range, dx_f_id, fsi_id, rigi
     domains = MeshFunction("size_t", mesh, 3)
     hdf.read(domains, "/domains")
 
-    # Only consider FSI in domain within this sphere
+    # Only consider FSI in domain within fsi_x_range
     fsi_x_min = fsi_x_range[0]
     fsi_x_max = fsi_x_range[1]
 
@@ -98,18 +98,18 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_x_range, dx_f_id, fsi_id, rigi
         if idx_facet == fsi_id or idx_facet == outer_id:
             mid = submesh_facet.midpoint()
             if mid.x() < fsi_x_min or mid.x() > fsi_x_max:
-                boundaries.array()[i] = rigid_id  # changed "fsi" idx to "rigid wall" idx
+                boundaries.array()[i] = rigid_id  # changed "fsi" id to "rigid wall" id
         i += 1
 
     # In this region, make fluid more viscous
-    x_min = 0.020
+    x_min = 0.024
     i = 0
     for cell in cells(mesh):
         idx_cell = domains.array()[i]
         if idx_cell == dx_f_id[0]:
             mid = cell.midpoint()
             if mid.x() > x_min:
-                domains.array()[i] = dx_f_id[1]  # assign this region lowest E
+                domains.array()[i] = dx_f_id[1]
         i += 1
 
     return mesh, domains, boundaries
