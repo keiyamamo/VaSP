@@ -34,7 +34,7 @@ docs = [
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
-    "--cov=../",
+    "--cov=./",
     "--cov-report=xml",
     "--cov-report=term-missing",
     "-v"
