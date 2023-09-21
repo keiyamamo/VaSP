@@ -33,7 +33,7 @@ def temporary_hdf5_file(tmpdir, request):
     common_input = read_command_line(str(model_path))
     common_input.update(
         dict(
-            coarsening_factor=3.8,
+            coarsening_factor=5.0,
             visualize=False,
             compress_mesh=False,
             outlet_flow_extension_length=4,
@@ -67,8 +67,8 @@ def test_offset_stenosis_problem(temporary_hdf5_file, tmpdir):
 
     assert output_match is not None, "Regular expression did not match the output."
 
-    expected_velocity = [2.651341658407568e-07, 1.7451668944612546e-07, 9.392417990920502e-08]
-    expected_pressure = -24871.223536973383
+    expected_velocity = [-3.932369415394389e-06, -5.309766758848671e-06, -5.2948108009165675e-06]
+    expected_pressure = 2789.853101493627
 
     velocity_last_time_step = [float(output_match[-1][0]), float(output_match[-1][1]), float(output_match[-1][2])]
     pressure_last_time_step = float(output_match[-1][3])
