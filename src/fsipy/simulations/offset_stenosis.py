@@ -7,9 +7,9 @@ import numpy as np
 from vampy.simulation.Womersley import make_womersley_bcs, compute_boundary_geometry_acrn
 from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, facets, cells, UserExpression, FacetNormal, ds, \
-    DirichletBC, Measure, inner, parameters, File
+    DirichletBC, Measure, inner, parameters
 
-from fsipy.simulations.simulation_common import load_probe_points, print_probe_points, print_mesh_summary
+from fsipy.simulations.simulation_common import load_probe_points, print_probe_points
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
@@ -159,7 +159,8 @@ class InnerP(UserExpression):
 
 def initiate(mesh_path, **namespace):
     probe_points = load_probe_points(mesh_path)
-
+    # FIXME: scaling probe points by 1e-3 is a temporary fix for the mesh
+    probe_points = probe_points * 1e-3
     return dict(probe_points=probe_points)
 
 
@@ -229,4 +230,4 @@ def post_solve(probe_points, dvp_, mesh, **namespace):
     v = dvp_["n"].sub(1, deepcopy=True)
     p = dvp_["n"].sub(2, deepcopy=True)
 
-    print_probe_points(v, p, probe_points, mesh)
+    print_probe_points(v, p, probe_points)
