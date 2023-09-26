@@ -199,6 +199,9 @@ def peval(f: Function, x: Union[float, np.ndarray]) -> np.ndarray:
     Returns:
         np.ndarray: Evaluated function values.
     """
+    # Make sure not to allow extrapolation for this function to work
+    if f.get_allow_extrapolation():
+        f.set_allow_extrapolation(False)
     try:
         yloc = f(x)
     except RuntimeError:

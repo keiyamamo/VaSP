@@ -67,8 +67,8 @@ def test_offset_stenosis_problem(temporary_hdf5_file, tmpdir):
 
     assert output_match is not None, "Regular expression did not match the output."
 
-    expected_velocity = [-3.932369415394389e-06, -5.309766758848671e-06, -5.2948108009165675e-06]
-    expected_pressure = 2789.853101493627
+    expected_velocity = [3.613256722606532e-08, 1.4311516724403025e-09, -1.0667868456781513e-09]
+    expected_pressure = 0.010270242640987198
 
     velocity_last_time_step = [float(output_match[-1][0]), float(output_match[-1][1]), float(output_match[-1][2])]
     pressure_last_time_step = float(output_match[-1][3])
