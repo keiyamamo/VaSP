@@ -7,9 +7,9 @@ import numpy as np
 from vampy.simulation.Womersley import make_womersley_bcs, compute_boundary_geometry_acrn
 from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, facets, cells, UserExpression, FacetNormal, ds, \
-    DirichletBC, Measure, inner, parameters
+    DirichletBC, Measure, inner, parameters, File
 
-from fsipy.simulations.simulation_common import load_probe_points, print_probe_points
+from fsipy.simulations.simulation_common import load_probe_points, print_probe_points, print_mesh_summary
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
@@ -224,9 +224,9 @@ def pre_solve(t, inlet, p_out_bc_val, **namespace):
     return dict(inlet=inlet, p_out_bc_val=p_out_bc_val)
 
 
-def post_solve(probe_points, dvp_, **namespace):
+def post_solve(probe_points, dvp_, mesh, **namespace):
 
     v = dvp_["n"].sub(1, deepcopy=True)
     p = dvp_["n"].sub(2, deepcopy=True)
 
-    print_probe_points(v, p, probe_points)
+    print_probe_points(v, p, probe_points, mesh)
