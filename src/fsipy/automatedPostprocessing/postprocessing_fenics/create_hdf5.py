@@ -1,19 +1,17 @@
 import numpy as np
 import h5py
-from dolfin import *
-import os
 import re
+from pathlib import Path
 
 from postprocessing_common import read_command_line, get_time_between_files
-from pathlib import Path
+from dolfin import Mesh, MeshFunction, HDF5File, VectorElement, FunctionSpace, Function, MPI, File, parameters
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6 # Not investigated thorougly. See MSc theses of Gjertsen. 
 parameters["reorder_dofs_serial"] = False
 
 
-
-def format_output_data(case_path, mesh_name, dt, stride, save_deg, start_t, end_t):
+def create_hdf5(folder_path, mesh_path, dt, stride, save_deg, start_t, end_t):
 
     """
     Loads displacement and velocity data directly from turtleFSI output (Visualization/displacement.h5, Visualization/velocity.h5, ) 
@@ -32,61 +30,40 @@ def format_output_data(case_path, mesh_name, dt, stride, save_deg, start_t, end_
 
     """
 
-    # Create directory paths 
-    for file in os.listdir(case_path):
-        file_path = os.path.join(case_path, file)
-        if os.path.exists(os.path.join(file_path, "1")):
-            visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
-            visualization_path = os.path.join(file_path, "1/Visualization")
-
-    # Create output directory if needed
-    if os.path.exists(visualization_separate_domain_path):
-        print('Path exists')
-    if not os.path.exists(visualization_separate_domain_path):
-        os.makedirs(visualization_separate_domain_path)
-
-    d_path_in = str(os.path.join(visualization_separate_domain_path,"d.h5")) 
-    v_path_in = str(os.path.join(visualization_separate_domain_path,"v.h5")) 
     displacement_domains = "all"
 
-    # get fluid+solid (FSI) mesh
-    mesh_name = mesh_name + ".h5"
-    mesh_path = os.path.join(case_path, "mesh", mesh_name)
-    # get fluid-only version of the mesh
-    mesh_name_fluid = mesh_name.replace(".h5","_fluid_only.h5")
-    mesh_path_fluid = os.path.join(case_path, "mesh", mesh_name_fluid)
-    # get solid-only version of the mesh
-    mesh_name_solid = mesh_name.replace(".h5","_solid_only.h5")
-    mesh_path_solid = os.path.join(case_path, "mesh", mesh_name_solid)
-
+    # Define mesh path related variables
+    fluid_domain_path = mesh_path.with_name(mesh_path.stem + "_fluid.h5")
+    solid_domain_path = mesh_path.with_name(mesh_path.stem + "_solid.h5")
+    
     # if save_deg = 1, make the refined mesh path the same (Call this mesh_viz)
     # TODO: Instead of using save_deg argument, we should just check if there's refined mesh in the mesh folder
-    if save_deg == 1:
-        print("Warning, stress results are compromised by using save_deg = 1, especially using a coarse mesh. Recommend using save_deg = 2 instead for computing stress")
-        if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
-            mesh_path_viz_solid = mesh_path
-        else:
-            mesh_path_viz_solid = mesh_path_solid
+    # if save_deg == 1:
+    #     print("Warning, stress results are compromised by using save_deg = 1, especially using a coarse mesh. Recommend using save_deg = 2 instead for computing stress")
+    #     if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
+    #         mesh_path_viz_solid = mesh_path
+    #     else:
+    #         mesh_path_viz_solid = mesh_path_solid
 
-        mesh_path_viz_fluid = mesh_path_fluid
+    #     mesh_path_viz_fluid = mesh_path_fluid
 
-    else:
-        mesh_path = mesh_path.replace(".h5","_refined.h5")
-        if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
-            mesh_path_viz_solid = mesh_path
-        else:
-            mesh_path_viz_solid = mesh_path_solid.replace("_solid_only.h5","_refined_solid_only.h5")
-        mesh_path_viz_fluid = mesh_path_fluid.replace("_fluid_only.h5","_refined_fluid_only.h5")
+    # else:
+    #     mesh_path = mesh_path.replace(".h5","_refined.h5")
+    #     if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
+    #         mesh_path_viz_solid = mesh_path
+    #     else:
+    #         mesh_path_viz_solid = mesh_path_solid.replace("_solid_only.h5","_refined_solid_only.h5")
+    #     mesh_path_viz_fluid = mesh_path_fluid.replace("_fluid_only.h5","_refined_fluid_only.h5")
  
     print(mesh_path_viz_solid)
     # Get data from input mesh, .h5 and .xdmf files
-    fluidIDs, solidIDs, allIDs = get_domain_ids(mesh_path) # Get list of all nodes in fluid, solid domains
-    xdmf_file_v = os.path.join(visualization_path, 'velocity.xdmf') # Use velocity xdmf to determine which h5 file contains each timestep
-    xdmf_file_d = os.path.join(visualization_path, 'displacement.xdmf') # Use displacement xdmf to determine which h5 file contains each timestep
+    xdmf_file_v = folder_path / "Visualization" / "velocity.xdmf" # Use velocity xdmf to determine which h5 file contains each timestep
+    xdmf_file_d = folder_path / "Visualization" / "displacement.xdmf" # Use displacement xdmf to determine which h5 file contains each timestep
     h5_ts, time_ts, index_ts = output_file_lists(xdmf_file_v) # Get list of h5 files containing each timestep, and corresponding indices for each timestep
     h5_ts_d, time_ts_d, index_ts_d = output_file_lists(xdmf_file_d)
 
 
+    fluidIDs, solidIDs, allIDs = get_domain_ids(mesh_path) # Get list of all nodes in fluid, solid domains
     v_ids = fluidIDs # for v.h5, we only want the fluid ids, so we can use CFD postprocessing code
     if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
         d_ids = allIDs # Fluid and solid domain
@@ -192,6 +169,9 @@ def format_output_data(case_path, mesh_name, dt, stride, save_deg, start_t, end_
                 file_mode = "w" if not os.path.exists(v_path_in) else "a"
         
                 # Save velocity
+                # NOTE: If we switch to using xdmf write_checkpoint, then we can get both
+                # visualization and fenics readable data in one file. Depending on the
+                # size of the data, this may be more efficient.
                 viz_v_file = HDF5File(MPI.comm_world, v_path_in, file_mode=file_mode)
                 viz_v_file.write(v_viz, "/velocity", time_file)
                 viz_v_file.close()
@@ -272,6 +252,13 @@ def output_file_lists(xdmf_file):
 
     return h5_ts, time_ts, index_ts
 
-if __name__ == '__main__':
+
+def main() -> None:
+    assert MPI.size(MPI.comm_world) == 1, "This script only runs in serial."
+
     folder, mesh, _, _, _, dt, stride, save_deg, start_t, end_t = read_command_line()
-    format_output_data(folder, mesh, dt, stride, save_deg, start_t, end_t)
+
+    create_hdf5(folder, mesh, dt, stride, save_deg, start_t, end_t)
+
+if __name__ == '__main__':
+    main()
