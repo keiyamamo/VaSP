@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from postprocessing_common import read_command_line, get_time_between_files
-from dolfin import Mesh, MeshFunction, HDF5File, VectorElement, FunctionSpace, Function, MPI, File, parameters
+from dolfin import Mesh, MeshFunction, HDF5File, VectorFunctionSpace, FunctionSpace, Function, MPI, File, parameters
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6 # Not investigated thorougly. See MSc theses of Gjertsen. 
@@ -30,39 +30,37 @@ def create_hdf5(folder_path, mesh_path, dt, stride, save_deg, start_t, end_t):
 
     """
 
-    displacement_domains = "all"
-
     # Define mesh path related variables
     fluid_domain_path = mesh_path.with_name(mesh_path.stem + "_fluid.h5")
     solid_domain_path = mesh_path.with_name(mesh_path.stem + "_solid.h5")
+
+    # Check if the input mesh exists
+    if not fluid_domain_path.exists() or not solid_domain_path.exists():
+        raise ValueError("Mesh file not found.")
+
+    # Read fluid and solid mesh
+    mesh_fluid = Mesh()
+    with HDF5File(MPI.comm_world, str(fluid_domain_path), "r") as mesh_file:
+        mesh_file.read(mesh_fluid, "mesh", False)
     
-    # if save_deg = 1, make the refined mesh path the same (Call this mesh_viz)
-    # TODO: Instead of using save_deg argument, we should just check if there's refined mesh in the mesh folder
-    # if save_deg == 1:
-    #     print("Warning, stress results are compromised by using save_deg = 1, especially using a coarse mesh. Recommend using save_deg = 2 instead for computing stress")
-    #     if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
-    #         mesh_path_viz_solid = mesh_path
-    #     else:
-    #         mesh_path_viz_solid = mesh_path_solid
+      # Read refined solid mesh saved as HDF5 format
+    messh_solid = Mesh()
+    with HDF5File(MPI.comm_world, str(solid_domain_path), "r") as mesh_file:
+        mesh_file.read(messh_solid, "mesh", False)
+    
+    # Define function spaces and functions
+    Vf = VectorFunctionSpace(mesh_fluid, "CG", 1) # Velocity function space
+    Vs = VectorFunctionSpace(messh_solid, "CG", 1) # Displacement function space
+    v = Function(Vf) # Velocity function
+    d = Function(Vs) # Displacement function
 
-    #     mesh_path_viz_fluid = mesh_path_fluid
-
-    # else:
-    #     mesh_path = mesh_path.replace(".h5","_refined.h5")
-    #     if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
-    #         mesh_path_viz_solid = mesh_path
-    #     else:
-    #         mesh_path_viz_solid = mesh_path_solid.replace("_solid_only.h5","_refined_solid_only.h5")
-    #     mesh_path_viz_fluid = mesh_path_fluid.replace("_fluid_only.h5","_refined_fluid_only.h5")
- 
-    print(mesh_path_viz_solid)
     # Get data from input mesh, .h5 and .xdmf files
     xdmf_file_v = folder_path / "Visualization" / "velocity.xdmf" # Use velocity xdmf to determine which h5 file contains each timestep
     xdmf_file_d = folder_path / "Visualization" / "displacement.xdmf" # Use displacement xdmf to determine which h5 file contains each timestep
     h5_ts, time_ts, index_ts = output_file_lists(xdmf_file_v) # Get list of h5 files containing each timestep, and corresponding indices for each timestep
     h5_ts_d, time_ts_d, index_ts_d = output_file_lists(xdmf_file_d)
 
-
+    displacement_domains = "all"
     fluidIDs, solidIDs, allIDs = get_domain_ids(mesh_path) # Get list of all nodes in fluid, solid domains
     v_ids = fluidIDs # for v.h5, we only want the fluid ids, so we can use CFD postprocessing code
     if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
@@ -70,30 +68,7 @@ def create_hdf5(folder_path, mesh_path, dt, stride, save_deg, start_t, end_t):
     else:
         d_ids = solidIDs # Solid domain only
 
-    # Read refined mesh saved as HDF5 format
-    mesh_path_viz_fluid = Path(mesh_path_viz_fluid)
-    mesh_viz_fluid = Mesh()
-    with HDF5File(MPI.comm_world, mesh_path_viz_fluid.__str__(), "r") as mesh_file:
-        mesh_file.read(mesh_viz_fluid, "mesh", False)
-
-    # Create visualization function space for v
-    ve_viz = VectorElement('CG', mesh_viz_fluid.ufl_cell(), 1)
-    FSv_viz = FunctionSpace(mesh_viz_fluid, ve_viz)   # Visualisation FunctionSpace for v
-
-    # Create lower-order function for visualization on refined mesh
-    v_viz = Function(FSv_viz)
-
-    # Read refined solid mesh saved as HDF5 format
-    mesh_path_viz_solid = Path(mesh_path_viz_solid)
-    mesh_viz_solid = Mesh()
-    with HDF5File(MPI.comm_world, mesh_path_viz_solid.__str__(), "r") as mesh_file:
-        mesh_file.read(mesh_viz_solid, "mesh", False)
-
-    # Create visualization function space for d
-    de_viz = VectorElement('CG', mesh_viz_solid.ufl_cell(), 1)
-    FSd_viz = FunctionSpace(mesh_viz_solid, de_viz)   # Visualisation FunctionSpace for d 
-    d_viz = Function(FSd_viz)
-
+   
     if MPI.rank(MPI.comm_world) == 0:
         print("=" * 10, "Start post processing", "=" * 10)
 
@@ -255,6 +230,9 @@ def output_file_lists(xdmf_file):
 
 def main() -> None:
     assert MPI.size(MPI.comm_world) == 1, "This script only runs in serial."
+
+    #TODO: read parameter file and check what save_deg was used.
+    # If, save_deg = 2 was used, then use refined mesh as mesh path
 
     folder, mesh, _, _, _, dt, stride, save_deg, start_t, end_t = read_command_line()
 
