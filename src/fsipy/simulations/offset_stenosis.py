@@ -9,7 +9,7 @@ from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, facets, cells, UserExpression, FacetNormal, ds, \
     DirichletBC, Measure, inner, parameters
 
-from fsipy.simulations.simulation_common import load_probe_points, print_probe_points
+from fsipy.simulations.simulation_common import load_mesh_and_data, print_mesh_summary, load_probe_points, print_probe_points
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
@@ -44,7 +44,7 @@ def set_problem_parameters(default_variables, **namespace):
         recompute=20,  # Recompute the Jacobian matix within time steps
         recompute_tstep=20,  # Recompute the Jacobian matix over time steps
         # boundary condition parameters
-        inlet_id=3,  # inlet id for the fluid
+        inlet_id=2,  # inlet id for the fluid
         inlet_outlet_s_id=11,  # inlet and outlet id for solid
         fsi_id=22,  # id for fsi surface
         rigid_id=11,  # "rigid wall" id for the fluid
@@ -159,8 +159,6 @@ class InnerP(UserExpression):
 
 def initiate(mesh_path, **namespace):
     probe_points = load_probe_points(mesh_path)
-    # FIXME: scaling probe points by 1e-3 is a temporary fix for the mesh
-    probe_points = probe_points * 1e-3
     return dict(probe_points=probe_points)
 
 
