@@ -9,7 +9,7 @@ from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, facets, cells, UserExpression, FacetNormal, ds, \
     DirichletBC, Measure, inner, parameters
 
-from fsipy.simulations.simulation_common import load_mesh_and_data, print_mesh_summary, load_probe_points, print_probe_points
+from fsipy.simulations.simulation_common import load_probe_points, print_probe_points
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
