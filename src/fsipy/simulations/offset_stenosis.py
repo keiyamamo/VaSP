@@ -9,7 +9,7 @@ from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, facets, cells, UserExpression, FacetNormal, ds, \
     DirichletBC, Measure, inner, parameters
 
-from fsipy.simulations.simulation_common import load_probe_points, print_probe_points
+from fsipy.simulations.simulation_common import load_probe_points, print_probe_points, print_mesh_summary
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
@@ -90,6 +90,8 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_x_range, dx_f_id, fsi_id, rigi
     domains = MeshFunction("size_t", mesh, 3)
     hdf.read(domains, "/domains")
 
+    print_mesh_summary(mesh)
+
     # Only consider FSI in domain within fsi_x_range
     fsi_x_min = fsi_x_range[0]
     fsi_x_max = fsi_x_range[1]
@@ -159,6 +161,7 @@ class InnerP(UserExpression):
 
 def initiate(mesh_path, **namespace):
     probe_points = load_probe_points(mesh_path)
+    
     return dict(probe_points=probe_points)
 
 
