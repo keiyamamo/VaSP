@@ -33,7 +33,7 @@ def temporary_hdf5_file(tmpdir, request):
     common_input = read_command_line(str(model_path))
     common_input.update(
         dict(
-            coarsening_factor=2.0,
+            coarsening_factor=5.0,
             visualize=False,
             compress_mesh=False,
             outlet_flow_extension_length=4,
@@ -42,7 +42,6 @@ def temporary_hdf5_file(tmpdir, request):
             number_of_sublayers_fluid=1,
             number_of_sublayers_solid=1,
             scale_factor=0.001,
-            solid_thickness_parameters=[0.0003]
         )
     )
 
