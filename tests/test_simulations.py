@@ -33,7 +33,7 @@ def temporary_hdf5_file(tmpdir, request):
     common_input = read_command_line(str(model_path))
     common_input.update(
         dict(
-            coarsening_factor=5.0,
+            coarsening_factor=1.5,
             visualize=False,
             compress_mesh=False,
             outlet_flow_extension_length=4,
