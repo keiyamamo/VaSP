@@ -2,6 +2,7 @@ import numpy as np
 import h5py
 import re
 from pathlib import Path
+import json
 
 from postprocessing_common import read_command_line, get_time_between_files
 from dolfin import Mesh, MeshFunction, HDF5File, VectorFunctionSpace, FunctionSpace, Function, MPI, File, parameters
@@ -62,15 +63,13 @@ def create_hdf5(folder_path, mesh_path, dt, stride, save_deg, start_t, end_t):
 
     displacement_domains = "all"
     fluidIDs, solidIDs, allIDs = get_domain_ids(mesh_path) # Get list of all nodes in fluid, solid domains
-    v_ids = fluidIDs # for v.h5, we only want the fluid ids, so we can use CFD postprocessing code
+    
+    # Remove this if statement since it can be done when we are using d_ids
     if displacement_domains == "all": # for d.h5, we can choose between using the entire domain and just the solid domain
         d_ids = allIDs # Fluid and solid domain
     else:
         d_ids = solidIDs # Solid domain only
 
-   
-    if MPI.rank(MPI.comm_world) == 0:
-        print("=" * 10, "Start post processing", "=" * 10)
 
     # Initialize variables
     tol = 1e-8  # temporal spacing tolerance, if this tolerance is exceeded, a warning flag will indicate that the data has uneven temporal spacing
@@ -85,7 +84,7 @@ def create_hdf5(folder_path, mesh_path, dt, stride, save_deg, start_t, end_t):
     # Open up the first velocity.h5 file to get the number of timesteps and nodes for the output data
     file = visualization_path + '/'+  h5_ts[0]
     vectorData = h5py.File(file) 
-    vectorArray = vectorData['VisualisationVector/0'][v_ids,:] 
+    vectorArray = vectorData['VisualisationVector/0'][fluidIDs,:] 
     # Open up the first displacement.h5 file to get the number of timesteps and nodes for the output data
     file_d = visualization_path + '/'+  h5_ts_d[0]
     vectorData_d = h5py.File(file_d) 
@@ -126,7 +125,7 @@ def create_hdf5(folder_path, mesh_path, dt, stride, save_deg, start_t, end_t):
                 vectorArrayFull_d = vectorData_d[ArrayName_d][:,:] # Important not to take slices of this array, slows code considerably... 
                 # instead make a copy (VectorArrayFull) and slice that.
                 
-                vectorArray = vectorArrayFull[v_ids,:]    
+                vectorArray = vectorArrayFull[fluidIDs,:]    
                 vectorArray_d = vectorArrayFull_d[d_ids,:]    
                 
                 # Velocity
@@ -144,9 +143,6 @@ def create_hdf5(folder_path, mesh_path, dt, stride, save_deg, start_t, end_t):
                 file_mode = "w" if not os.path.exists(v_path_in) else "a"
         
                 # Save velocity
-                # NOTE: If we switch to using xdmf write_checkpoint, then we can get both
-                # visualization and fenics readable data in one file. Depending on the
-                # size of the data, this may be more efficient.
                 viz_v_file = HDF5File(MPI.comm_world, v_path_in, file_mode=file_mode)
                 viz_v_file.write(v_viz, "/velocity", time_file)
                 viz_v_file.close()
@@ -223,20 +219,33 @@ def output_file_lists(xdmf_file):
             index_str = re.findall(index_pattern, line)
             index = int(index_str[0])
             index_ts.append(index)
+
     time_increment_between_files = time_ts[2] - time_ts[1] # Calculate the time between files from xdmf file
 
     return h5_ts, time_ts, index_ts
 
 
 def main() -> None:
+
     assert MPI.size(MPI.comm_world) == 1, "This script only runs in serial."
 
-    #TODO: read parameter file and check what save_deg was used.
-    # If, save_deg = 2 was used, then use refined mesh as mesh path
+    folder, _, _, _, _, dt, stride, save_deg, start_t, end_t = read_command_line()
+    folder_path = Path(folder)
 
-    folder, mesh, _, _, _, dt, stride, save_deg, start_t, end_t = read_command_line()
+    parameter_path = folder_path / "Checkpoint" / "default_variables.json"
+    with open(parameter_path, "r") as f:
+        parameters = json.load(f)
+        save_deg = parameters["save_deg"]
+    
+    if save_deg == 2:
+        mesh_path = folder_path / "Mesh" / "mesh_refined.h5"
+        assert mesh_path.exists(), "Mesh file not found."
+    else:
+        mesh_pah = folder_path / "Mesh" / "mesh.h5"
+        assert mesh_path.exists(), "Mesh file not found."
 
-    create_hdf5(folder, mesh, dt, stride, save_deg, start_t, end_t)
+
+    create_hdf5(folder, mesh_path, dt, stride, save_deg, start_t, end_t)
 
 if __name__ == '__main__':
     main()
