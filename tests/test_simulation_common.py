@@ -116,23 +116,40 @@ def test_load_mesh_info(temporary_hdf5_file):
     expected_Q_mean = 2.4817264611257612
     expected_area_ratio = [0.4124865453872114, 0.5875134546127886]
     expected_area_inlet = 8.00556922943794
+    expected_solid_side_wall_id = 11
+    expected_interface_fsi_id = 22
+    expected_solid_outer_wall_id = 33
+    expected_fluid_volume_id = 0
+    expected_solid_volume_id = 1
 
     # Test the load_mesh_info function with the temporary JSON info file
-    id_in, id_out, id_wall, Q_mean, area_ratio, area_inlet = load_mesh_info(temporary_hdf5_file)
+    mesh_info = load_mesh_info(temporary_hdf5_file)
 
-    # Print the actual and expected values in assert calls
-    assert id_in == expected_id_in, \
-        f"Actual id_in: {id_in}, Expected id_in: {expected_id_in}"
-    assert id_out == expected_id_out, \
-        f"Actual id_out: {id_out}, Expected id_out: {expected_id_out}"
-    assert id_wall == expected_id_wall, \
-        f"Actual id_wall: {id_wall}, Expected id_wall: {expected_id_wall}"
-    assert Q_mean == expected_Q_mean, \
-        f"Actual Q_mean: {Q_mean}, Expected Q_mean: {expected_Q_mean}"
-    assert area_ratio == expected_area_ratio, \
-        f"Actual area_ratio: {area_ratio}, Expected area_ratio: {expected_area_ratio}"
-    assert area_inlet == expected_area_inlet, \
-        f"Actual area_inlet: {area_inlet}, Expected area_inlet: {expected_area_inlet}"
+    # Assertions using named tuple components
+    assert mesh_info.id_in == expected_id_in, \
+        f"Actual id_in: {mesh_info.id_in}, Expected id_in: {expected_id_in}"
+    assert mesh_info.id_out == expected_id_out, \
+        f"Actual id_out: {mesh_info.id_out}, Expected id_out: {expected_id_out}"
+    assert mesh_info.id_wall == expected_id_wall, \
+        f"Actual id_wall: {mesh_info.id_wall}, Expected id_wall: {expected_id_wall}"
+    assert mesh_info.Q_mean == expected_Q_mean, \
+        f"Actual Q_mean: {mesh_info.Q_mean}, Expected Q_mean: {expected_Q_mean}"
+    assert mesh_info.area_ratio == expected_area_ratio, \
+        f"Actual area_ratio: {mesh_info.area_ratio}, Expected area_ratio: {expected_area_ratio}"
+    assert mesh_info.area_inlet == expected_area_inlet, \
+        f"Actual area_inlet: {mesh_info.area_inlet}, Expected area_inlet: {expected_area_inlet}"
+    assert mesh_info.solid_side_wall_id == expected_solid_side_wall_id, \
+        f"Actual solid_side_wall_id: {mesh_info.solid_side_wall_id}, " \
+        f"Expected solid_side_wall_id: {expected_solid_side_wall_id}"
+    assert mesh_info.interface_fsi_id == expected_interface_fsi_id, \
+        f"Actual interface_fsi_id: {mesh_info.interface_fsi_id}, Expected interface_fsi_id: {expected_interface_fsi_id}"
+    assert mesh_info.solid_outer_wall_id == expected_solid_outer_wall_id, \
+        f"Actual solid_outer_wall_id: {mesh_info.solid_outer_wall_id}, " \
+        f"Expected solid_outer_wall_id: {expected_solid_outer_wall_id}"
+    assert mesh_info.fluid_volume_id == expected_fluid_volume_id, \
+        f"Actual fluid_volume_id: {mesh_info.fluid_volume_id}, Expected fluid_volume_id: {expected_fluid_volume_id}"
+    assert mesh_info.solid_volume_id == expected_solid_volume_id, \
+        f"Actual solid_volume_id: {mesh_info.solid_volume_id}, Expected solid_volume_id: {expected_solid_volume_id}"
 
 
 def test_print_mesh_summary(temporary_hdf5_file):
@@ -158,17 +175,17 @@ def test_print_mesh_summary(temporary_hdf5_file):
     # Define expected summary strings
     expected_strings = [
         "=== Mesh Information Summary ===",
-        "X range: 0.029932 to 0.0368581 (delta: 0.0069)",
-        "Y range: 0.0287532 to 0.034399700000000005 (delta: 0.0056)",
-        "Z range: 0.0381364 to 0.0447481 (delta: 0.0066)",
+        "X range: 29.932 to 36.8581 (delta: 6.9261)",
+        "Y range: 28.7532 to 34.3997 (delta: 5.6465)",
+        "Z range: 38.1364 to 44.7481 (delta: 6.6117)",
         "Number of cells: 32283",
         "Number of cells per processor: 32283",
         "Number of edges: 0",
         "Number of faces: 65699",
         "Number of facets: 65699",
         "Number of vertices: 5860",
-        "Volume: 6.956489929680826e-08",
-        "Number of cells per volume: 464070247011.501",
+        "Volume: 69.56489929680801",
+        "Number of cells per volume: 464.07024701150266",
     ]
 
     # Check if each expected summary string is present in the printed output

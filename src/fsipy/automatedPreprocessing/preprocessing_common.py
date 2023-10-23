@@ -102,22 +102,27 @@ def dist_sphere_spheres(surface: vtkPolyData, save_path: str,
 
 
 def generate_mesh(surface: vtkPolyData, number_of_sublayers_fluid: int, number_of_sublayers_solid: int,
-                  solid_thickness: str, solid_thickness_parameters: list) -> tuple:
+                  solid_thickness: str, solid_thickness_parameters: list,
+                  solid_side_wall_id: int = 11, interface_fsi_id: int = 22, solid_outer_wall_id: int = 33,
+                  fluid_volume_id: int = 0, solid_volume_id: int = 1) -> tuple:
     """
     Generates a mesh suitable for FSI from an input surface model.
 
     Args:
         surface (vtkPolyData): Surface model to be meshed.
         number_of_sublayers_fluid (int): Number of sublayers for fluid.
-        number_of_sublayers_solud (int): Number of sublayers for solid.
+        number_of_sublayers_solid (int): Number of sublayers for solid.
         solid_thickness (str): Type of solid thickness ('variable' or 'constant').
         solid_thickness_parameters (list): List of parameters for solid thickness.
+        solid_side_wall_id (int, optional): ID for solid side wall. Default is 11.
+        interface_fsi_id (int, optional): ID for the FSI interface. Default is 22.
+        solid_outer_wall_id (int, optional): ID for solid outer wall. Default is 33.
+        fluid_volume_id (int, optional): ID for the fluid volume. Default is 0.
+        solid_volume_id (int, optional): ID for the solid volume. Default is 1.
 
     Returns:
         tuple: A tuple containing the generated mesh (vtkUnstructuredGrid) and the remeshed surface (vtkPolyData).
     """
-    print("--- Creating FSI mesh")
-
     meshGenerator = vmtkMeshGeneratorFsi()
     meshGenerator.Surface = surface
 
@@ -145,11 +150,11 @@ def generate_mesh(surface: vtkPolyData, number_of_sublayers_fluid: int, number_o
         meshGenerator.SolidThickness = solid_thickness_parameters[0]
 
     # IDs
-    meshGenerator.SolidSideWallId = 11
-    meshGenerator.InterfaceId_fsi = 22
-    meshGenerator.InterfaceId_outer = 33
-    meshGenerator.VolumeId_fluid = 0  # (keep to 0)
-    meshGenerator.VolumeId_solid = 1
+    meshGenerator.SolidSideWallId = solid_side_wall_id
+    meshGenerator.InterfaceFsiId = interface_fsi_id
+    meshGenerator.SolidOuterWallId = solid_outer_wall_id
+    meshGenerator.FluidVolumeId = fluid_volume_id
+    meshGenerator.SolidVolumeId = solid_volume_id
 
     # Generate mesh
     meshGenerator.Execute()
@@ -159,13 +164,15 @@ def generate_mesh(surface: vtkPolyData, number_of_sublayers_fluid: int, number_o
     return generated_mesh, remeshed_surface
 
 
-def convert_xml_mesh_to_hdf5(file_name_xml_mesh: str, scaling_factor: float = 0.001) -> None:
+def convert_xml_mesh_to_hdf5(file_name_xml_mesh: str, scaling_factor: float = 1) -> None:
     """Converts an XML mesh to an HDF5 mesh.
 
     Args:
         file_name_xml_mesh (str): The name of the XML mesh file.
         scaling_factor (float, optional): A scaling factor to apply to the mesh coordinates.
-                                          The default value is 0.001, which converts from millimeters to meters.
+                                          The default value is 1 (no scaling). Note that probes
+                                          and parameters inside _info.json file will not be scaled
+                                          if you only scale HDF5 file.
 
     Returns:
         None
@@ -217,8 +224,6 @@ def convert_vtu_mesh_to_xdmf(file_name_vtu_mesh: str, file_name_xdmf_mesh: str) 
         file_name_vtu_mesh (str): Path to the input VTU mesh file.
         file_name_xdmf_mesh (str): Path to the output XDMF file.
     """
-    print("--- Converting VTU mesh to XDMF")
-
     # Load the VTU mesh
     vtu_mesh = meshio.read(file_name_vtu_mesh)
 
@@ -261,7 +266,6 @@ def edge_length_evaluator(file_name_mesh: str, file_name_edge_length_xdmf: str) 
         file_name_mesh (str): Path to the XML mesh file.
         file_name_edge_length_xdmf (str): Path to the output XDMF file.
     """
-    print("--- Evaluating edge length")
     # Check if the XML mesh file exists
     mesh_path = Path(file_name_mesh)
     if not mesh_path.is_file():
