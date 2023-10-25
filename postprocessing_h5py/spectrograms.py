@@ -68,9 +68,9 @@ def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t
     #--------------------------------------------------------
     
     if save_deg == 1:
-        mesh_path = case_path + "/mesh/" + mesh_name +".h5" # Mesh path. Points to the corner-node input mesh
+        mesh_path = case_path + "/Mesh/" + mesh_name +".h5" # Mesh path. Points to the corner-node input mesh
     else: 
-        mesh_path = case_path + "/mesh/" + mesh_name +"_refined.h5" # Mesh path. Points to the visualization mesh with intermediate nodes 
+        mesh_path = case_path + "/Mesh/" + mesh_name +"_refined.h5" # Mesh path. Points to the visualization mesh with intermediate nodes 
     mesh_path_fluid = mesh_path.replace(".h5","_fluid_only.h5") # needed for formatting SPI data
     
     formatted_data_folder_name = "res_"+case_name+'_stride_'+str(stride)+"t"+str(start_t)+"_to_"+str(end_t)+"save_deg_"+str(save_deg)
@@ -93,7 +93,7 @@ def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t
     
     # If the output file exists, don't re-make it
     if os.path.exists(formatted_data_path):
-        print('path found!')
+        print(f'path found! : {formatted_data_path}')
     elif dvp == "wss":
         _ = postprocessing_common_h5py.create_transformed_matrix(visualization_separate_domain_folder, formatted_data_folder, mesh_path_fluid, case_name, start_t,end_t,dvp,stride)
     else: 
@@ -116,11 +116,13 @@ def read_spectrogram_data(case_path, mesh_name, save_deg, stride, start_t, end_t
         coords = postprocessing_common_h5py.get_coords(mesh_path)
     
     sphereIDs = find_points_in_sphere(sac_center,r_sphere,coords)
+    
+    assert len(sphereIDs) > 0, "No nodes found in sphere. Check that the sphere is within the mesh."
+
     # Get nodes in sac only
     allIDs=list(set(sphereIDs).intersection(allIDs))
     fluidIDs=list(set(sphereIDs).intersection(fluidIDs))
     wallIDs=list(set(sphereIDs).intersection(wallIDs))
-    
     if dvp == "d":
         df = df.iloc[wallIDs]    # For displacement spectrogram, we need to take only the wall IDs
     elif dvp == "wss":
