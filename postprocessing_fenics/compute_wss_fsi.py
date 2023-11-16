@@ -33,29 +33,31 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
     """
     # File paths
 
-    for file in os.listdir(case_path):
-        file_path = os.path.join(case_path, file)
-        if os.path.exists(os.path.join(file_path, "1")):
-            visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
-            
+    # for file in os.listdir(case_path):
+    #     file_path = os.path.join(case_path, file)
+    #     if os.path.exists(os.path.join(file_path, "1")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    visualization_separate_domain_path = os.path.join(case_path, "Visualization_separate_domain")
     visualization_separate_domain_path = Path(visualization_separate_domain_path)
-    file_path_u = visualization_separate_domain_path / "v.h5"
+    # file_path_u = visualization_separate_domain_path / "v.h5"
+    file_path_u = visualization_separate_domain_path / "u.h5"
     WSS_ts_path = (visualization_separate_domain_path / "WSS_ts.xdmf").__str__()
 
     # get fluid-only version of the mesh
     mesh_name = mesh_name + ".h5"
-    mesh_name = mesh_name.replace(".h5","_fluid_only.h5")
-    mesh_path = os.path.join(case_path, "mesh", mesh_name)
+    mesh_name = mesh_name.replace(".h5","_fluid.h5")
+    # mesh_path = os.path.join(case_path, "mesh", mesh_name)
+    mesh_path = os.path.join(case_path, "Mesh", mesh_name)
 
     # if save_deg = 1, make the refined mesh path the same (Call this mesh_viz)
     if save_deg == 1:
         mesh_path_viz = mesh_path
     else:
-        mesh_path_viz = mesh_path.replace("_fluid_only.h5","_refined_fluid_only.h5")
+        mesh_path_viz = mesh_path.replace("_fluid.h5","_refined_fluid.h5")
 
     mesh_path = Path(mesh_path)
     mesh_path_viz = Path(mesh_path_viz)
@@ -149,15 +151,13 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
             vec_name = "/velocity/vector_%d" % file_counter
             t = f.attributes(vec_name)["timestamp"]
 
-
             if MPI.rank(MPI.comm_world) == 0:
                 print("=" * 10, "Calculating WSS at Timestep: {}".format(t), "=" * 10)
             f.read(u_viz, vec_name)
-    
+
     
             # Calculate v in P2 based on visualization refined P1
             u.vector()[:] = dv_trans*u_viz.vector()
-        
             # Compute WSS
             if MPI.rank(MPI.comm_world) == 0:
                 print("Compute WSS (mean)")
