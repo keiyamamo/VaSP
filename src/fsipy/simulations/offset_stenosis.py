@@ -163,7 +163,7 @@ class InnerP(UserExpression):
 
 def initiate(mesh_path, **namespace):
     probe_points = load_probe_points(mesh_path)
-    
+
     return dict(probe_points=probe_points)
 
 
