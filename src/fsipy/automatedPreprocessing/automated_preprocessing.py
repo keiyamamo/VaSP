@@ -11,25 +11,27 @@ from morphman import get_uncapped_surface, write_polydata, get_parameters, vtk_c
     create_new_surface, compute_centers, vmtk_smooth_surface, str2bool, vmtk_compute_voronoi_diagram, \
     prepare_output_surface, vmtk_compute_geometric_features
 
-from vampy.automatedPreprocessing import ToolRepairSTL
 from vampy.automatedPreprocessing.preprocessing_common import read_polydata, get_centers_for_meshing, \
     dist_sphere_diam, dist_sphere_curvature, dist_sphere_constant, get_regions_to_refine, add_flow_extension, \
     write_mesh, mesh_alternative, find_boundaries, compute_flow_rate, setup_model_network, \
     radiusArrayName, scale_surface, get_furtest_surface_point, check_if_closed_surface
+from vampy.automatedPreprocessing.repair_tools import find_and_delete_nan_triangles, clean_surface, print_surface_info
 from vampy.automatedPreprocessing.simulate import run_simulation
 from vampy.automatedPreprocessing.visualize import visualize_model
 
 from fsipy.automatedPreprocessing.preprocessing_common import generate_mesh, distance_to_spheres_solid_thickness, \
     dist_sphere_spheres, convert_xml_mesh_to_hdf5, convert_vtu_mesh_to_xdmf, edge_length_evaluator
+from fsipy.simulations.simulation_common import load_mesh_and_data, print_mesh_summary
 
 
 def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_factor, smoothing_iterations,
-                       meshing_method, refine_region, is_atrium, add_flow_extensions, visualize, config_path,
+                       meshing_method, refine_region, has_multiple_inlets, add_flow_extensions, visualize, config_path,
                        coarsening_factor, inlet_flow_extension_length, outlet_flow_extension_length,
                        number_of_sublayers_fluid, number_of_sublayers_solid, edge_length,
                        region_points, compress_mesh, scale_factor, scale_factor_h5, resampling_step, meshing_parameters,
                        remove_all, solid_thickness, solid_thickness_parameters, mesh_format, flow_rate_factor,
-                       solid_side_wall_id, interface_fsi_id, solid_outer_wall_id, fluid_volume_id, solid_volume_id):
+                       solid_side_wall_id, interface_fsi_id, solid_outer_wall_id, fluid_volume_id, solid_volume_id,
+                       mesh_generation_retries, no_solid):
     """
     Automatically generate mesh of surface model in .vtu and .xml format, including prescribed
     flow rates at inlet and outlet based on flow network model.
@@ -44,7 +46,7 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
         smoothing_iterations (int): Number of smoothing iterations for Taubin and Laplace smoothing
         meshing_method (str): Determines what the density of the volumetric mesh depends upon
         refine_region (bool): Refines selected region of input if True
-        is_atrium (bool): Determines whether this is an atrium case
+        has_multiple_inlets (bool): Specifies whether the input model has multiple inlets
         add_flow_extensions (bool): Adds flow extensions to mesh if True
         visualize (bool): Visualize resulting surface model with flow rates
         config_path (str): Path to configuration file for remote simulation
@@ -69,6 +71,8 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
         solid_outer_wall_id (int): ID for the solid outer wall
         fluid_volume_id (int): ID for the fluid volume
         solid_volume_id (int): ID for the solid volume
+        mesh_generation_retries (int): Number of mesh generation retries before trying alternative method
+        no_solid (bool): Generate mesh without solid
     """
     # Get paths
     case_name = input_model.rsplit(path.sep, 1)[-1].rsplit('.')[0]
@@ -97,6 +101,7 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
     file_name_surface_name = base_path + "_remeshed_surface.vtp"
     file_name_xml_mesh = base_path + ".xml"
     file_name_vtu_mesh = base_path + ".vtu"
+    file_name_hdf5_mesh = base_path + ".h5"
     file_name_xdmf_mesh = base_path + ".xdmf"
     file_name_edge_length_xdmf = base_path + "_edge_length.xdmf"
     region_centerlines = None
@@ -110,7 +115,7 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
             file_name_parameters, file_name_probe_points,
             file_name_voronoi, file_name_voronoi_smooth, file_name_voronoi_surface, file_name_surface_smooth,
             file_name_model_flow_ext, file_name_clipped_model, file_name_flow_centerlines, file_name_surface_name,
-            file_name_xml_mesh, file_name_vtu_mesh, file_name_xdmf_mesh,
+            file_name_xml_mesh, file_name_vtu_mesh, file_name_hdf5_mesh, file_name_xdmf_mesh,
         ]
         for file in files_to_remove:
             if path.exists(file):
@@ -148,10 +153,10 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
         surface = vtk_triangulate_surface(surface)
 
         # Check the mesh if there is redundant nodes or NaN triangles.
-        ToolRepairSTL.surfaceOverview(surface)
-        ToolRepairSTL.foundAndDeleteNaNTriangles(surface)
-        surface = ToolRepairSTL.cleanTheSurface(surface)
-        foundNaN = ToolRepairSTL.foundAndDeleteNaNTriangles(surface)
+        print_surface_info(surface)
+        find_and_delete_nan_triangles(surface)
+        surface = clean_surface(surface)
+        foundNaN = find_and_delete_nan_triangles(surface)
         if foundNaN:
             raise RuntimeError(("There is an issue with the surface. "
                                 "Nan coordinates or some other shenanigans."))
@@ -164,18 +169,19 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
 
     # Get centerlines
     print("--- Get centerlines\n")
-    inlet, outlets = get_centers_for_meshing(surface, is_atrium, base_path)
+    inlet, outlets = get_centers_for_meshing(surface, has_multiple_inlets, base_path)
     has_outlet = len(outlets) != 0
 
-    # Get point the furthest away inlet when only one boundary
+    # Get point the furthest away from the inlet when only one boundary
     if not has_outlet:
         outlets = get_furtest_surface_point(inlet, surface)
 
-    source = outlets if is_atrium else inlet
-    target = inlet if is_atrium else outlets
+    source = outlets if has_multiple_inlets else inlet
+    target = inlet if has_multiple_inlets else outlets
 
     centerlines, voronoi, _ = compute_centerlines(source, target, file_name_centerlines, capped_surface,
                                                   resampling=resampling_step)
+    print("\n")
     tol = get_centerline_tolerance(centerlines)
 
     # Get 'center' and 'radius' of the regions(s)
@@ -222,7 +228,7 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
         region_centerlines = vtk_merge_polydata(refine_region_centerline)
 
         for region in refine_region_centerline:
-            region_factor = 0.9 if is_atrium else 0.5
+            region_factor = 0.9 if has_multiple_inlets else 0.5
             region_center.append(region.GetPoints().GetPoint(int(region.GetNumberOfPoints() * region_factor)))
             tmp_misr = get_point_data_array(radiusArrayName, region)
             misr_max.append(tmp_misr.max())
@@ -264,7 +270,7 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
                        "manually clipp the branch which still is capped. " +
                        "Overwrite the current {} and restart the script.").format(
                     file_name_surface_smooth, file_name_surface_smooth))
-                sys.exit(0)
+                sys.exit(-1)
 
             surface = surface_uncapped
 
@@ -295,10 +301,10 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
     if add_flow_extensions:
         if not path.isfile(file_name_model_flow_ext):
             print("--- Adding flow extensions\n")
-            # Add extension normal on boundary for atrium models
-            extension = "centerlinedirection" if is_atrium else "boundarynormal"
-            if is_atrium:
-                # Flip lengths if model is atrium
+            # Add extension normal on boundary for models with multiple inlets
+            extension = "centerlinedirection" if has_multiple_inlets else "boundarynormal"
+            if has_multiple_inlets:
+                # Flip lengths if model has multiple inlets
                 inlet_flow_extension_length, outlet_flow_extension_length = \
                     outlet_flow_extension_length, inlet_flow_extension_length
 
@@ -316,6 +322,7 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
         else:
             surface_extended = read_polydata(file_name_model_flow_ext)
     else:
+        print("--- Not adding flow extensions\n")
         surface_extended = surface
 
     # Capp surface with flow extensions
@@ -327,13 +334,14 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
             print("--- Compute the model centerlines with flow extension.\n")
             # Compute the centerlines.
             if has_outlet:
-                inlet, outlets = get_centers_for_meshing(surface_extended, is_atrium, base_path,
+                inlet, outlets = get_centers_for_meshing(surface_extended, has_multiple_inlets, base_path,
                                                          use_flow_extensions=True)
             else:
-                inlet, _ = get_centers_for_meshing(surface_extended, is_atrium, base_path, use_flow_extensions=True)
-            # Flip outlets and inlets for atrium models
-            source = outlets if is_atrium else inlet
-            target = inlet if is_atrium else outlets
+                inlet, _ = get_centers_for_meshing(surface_extended, has_multiple_inlets, base_path,
+                                                   use_flow_extensions=True)
+            # Flip outlets and inlets for models with multiple inlets
+            source = outlets if has_multiple_inlets else inlet
+            target = inlet if has_multiple_inlets else outlets
             centerlines, _, _ = compute_centerlines(source, target, file_name_flow_centerlines, capped_surface,
                                                     resampling=resampling_step)
 
@@ -421,21 +429,39 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
 
     # Compute mesh
     if not path.isfile(file_name_vtu_mesh):
-        print("--- Computing mesh\n")
-        try:
-            mesh, remeshed_surface = generate_mesh(distance_to_sphere,
-                                                   number_of_sublayers_fluid,
-                                                   number_of_sublayers_solid,
-                                                   solid_thickness,
-                                                   solid_thickness_parameters)
-        except Exception:
-            print("ERROR: Mesh generation failed. Trying to remesh with alternative method.")
+        print("--- Generating FSI mesh\n")
+
+        def try_generate_mesh(distance_to_sphere, number_of_sublayers_fluid,
+                              number_of_sublayers_solid, solid_thickness, solid_thickness_parameters):
+            try:
+                return generate_mesh(distance_to_sphere, number_of_sublayers_fluid,
+                                     number_of_sublayers_solid, solid_thickness, solid_thickness_parameters,
+                                     solid_side_wall_id, interface_fsi_id, solid_outer_wall_id, fluid_volume_id,
+                                     solid_volume_id, no_solid)
+            except RuntimeError:
+                return None
+
+        mesh_generation_failed = True
+
+        for i in range(mesh_generation_retries + 1):
+            mesh_and_surface = try_generate_mesh(distance_to_sphere, number_of_sublayers_fluid,
+                                                 number_of_sublayers_solid, solid_thickness, solid_thickness_parameters)
+            if mesh_and_surface:
+                mesh, remeshed_surface = mesh_and_surface
+                mesh_generation_failed = False
+                break
+
+        if mesh_generation_failed:
+            print(f"ERROR: Mesh generation failed after {mesh_generation_retries} retries. "
+                  "Trying to remesh with an alternative method.")
             distance_to_sphere = mesh_alternative(distance_to_sphere)
-            mesh, remeshed_surface = generate_mesh(distance_to_sphere,
-                                                   number_of_sublayers_fluid,
-                                                   number_of_sublayers_solid,
-                                                   solid_thickness,
-                                                   solid_thickness_parameters)
+            mesh_and_surface = try_generate_mesh(distance_to_sphere, number_of_sublayers_fluid,
+                                                 number_of_sublayers_solid, solid_thickness, solid_thickness_parameters)
+            if mesh_and_surface:
+                mesh, remeshed_surface = mesh_and_surface
+            else:
+                print("ERROR: Mesh generation failed with an alternative method.")
+                sys.exit(-1)
 
         assert mesh.GetNumberOfPoints() > 0, "No points in mesh, try to remesh."
         assert remeshed_surface.GetNumberOfPoints() > 0, "No points in surface mesh, try to remesh."
@@ -465,22 +491,46 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
     if mesh_format == "hdf5":
         print("--- Converting XML mesh to HDF5\n")
         convert_xml_mesh_to_hdf5(file_name_xml_mesh, scale_factor_h5)
+
         # Evaluate edge length for inspection
+        print("--- Evaluating edge length\n")
         edge_length_evaluator(file_name_xml_mesh, file_name_edge_length_xdmf)
+
+        # Print mesh information
+        dolfin_mesh, _, _ = load_mesh_and_data(file_name_hdf5_mesh)
+        print_mesh_summary(dolfin_mesh)
     elif mesh_format == "xdmf":
+        print("--- Converting VTU mesh to XDMF\n")
         convert_vtu_mesh_to_xdmf(file_name_vtu_mesh, file_name_xdmf_mesh)
+
         # Evaluate edge length for inspection
+        print("--- Evaluating edge length\n")
         edge_length_evaluator(file_name_xdmf_mesh, file_name_edge_length_xdmf)
 
-    network, probe_points = setup_model_network(centerlines, file_name_probe_points, region_center, verbose_print)
+    network, probe_points = setup_model_network(centerlines, file_name_probe_points, region_center, verbose_print,
+                                                has_multiple_inlets)
 
     # Load updated parameters following meshing
     parameters = get_parameters(base_path)
 
     print("--- Computing flow rates and flow split, and setting boundary IDs\n")
-    mean_inflow_rate = compute_flow_rate(is_atrium, inlet, parameters, flow_rate_factor)
+    mean_inflow_rate = compute_flow_rate(has_multiple_inlets, inlet, parameters, flow_rate_factor)
 
-    find_boundaries(base_path, mean_inflow_rate, network, mesh, verbose_print, is_atrium)
+    find_boundaries(base_path, mean_inflow_rate, network, mesh, verbose_print, has_multiple_inlets)
+
+    # Load updated parameters after setting boundary ID's
+    parameters = get_parameters(base_path)
+
+    # Determine the key for inlet and outlet based on whether we have multiple inlets or not
+    inlet_key = "inlet_ids" if has_multiple_inlets else "inlet_id"
+    outlet_key = "outlet_id" if has_multiple_inlets else "outlet_ids"
+
+    # Adjust inlet and outlet ID's by incrementing each by 1
+    for key in [inlet_key, outlet_key]:
+        parameters[key] = [val + 1 for val in parameters[key]]
+
+    # Write parameters back to file after adjusting inlet and outlet ID's
+    write_parameters(parameters, base_path)
 
     # Display the flow split at the outlets, inlet flow rate, and probes.
     if visualize:
@@ -497,7 +547,6 @@ def run_pre_processing(input_model, verbose_print, smoothing_method, smoothing_f
     files_to_remove = [
         file_name_centerlines, file_name_refine_region_centerlines, file_name_region_centerlines,
         file_name_distance_to_sphere_diam, file_name_distance_to_sphere_const, file_name_distance_to_sphere_curv,
-        file_name_distance_to_sphere_spheres, file_name_distance_to_sphere_solid_thickness,
         file_name_voronoi, file_name_voronoi_smooth, file_name_voronoi_surface, file_name_surface_smooth,
         file_name_model_flow_ext, file_name_clipped_model, file_name_flow_centerlines, file_name_surface_name
     ]
@@ -576,7 +625,7 @@ def read_command_line(input_path=None):
                              "The 'curvature' method and 'diameter' method produces a variable density mesh," +
                              " based on the surface curvature and the distance from the " +
                              "centerline to the surface, respectively. The 'distancetospheres' method allows to " +
-                             "place spheres where the surface is pointing by pressing 'space'. By pressing 'd', the " +
+                             "place spheres where the cursor is pointing by pressing 'space'. By pressing 'd', the " +
                              "surface is coloured by the distance to the spheres. By pressing 'a', a scaling " +
                              "function can be specified by four parameters: 'offset', 'scale', 'min' and 'max'. " +
                              "These parameters for the scaling function can also be controlled by the -mp argument.")
@@ -602,11 +651,12 @@ def read_command_line(input_path=None):
                              "Example providing the points (0.1, 5.0, -1) and (1, -5.2, 3.21):" +
                              " --region-points 0.1 5 -1 1 5.24 3.21")
 
-    atrium = parser.add_mutually_exclusive_group(required=False)
-    atrium.add_argument('-at', '--is-atrium',
-                        action="store_true",
-                        default=False,
-                        help="Determine whether or not the model is an atrium model.")
+    multiple_inlets = parser.add_mutually_exclusive_group(required=False)
+    multiple_inlets.add_argument('-hmi', '--has-multiple-inlets',
+                                 action="store_true",
+                                 default=False,
+                                 help="Specifies whether the input model has multiple inlets. When set to True, it " +
+                                      "indicates a configuration with multiple inlets and one outlet.")
 
     parser.add_argument('-f', '--add-flowextensions',
                         default=True,
@@ -644,11 +694,6 @@ def read_command_line(input_path=None):
                         help='Path to configuration file for remote simulation. ' +
                              'See ssh_config.json for details')
 
-    parser.add_argument('-bl', '--add-boundary-layer',
-                        default=True,
-                        type=str2bool,
-                        help="Adds boundary layers along geometry wall if true.")
-
     parser.add_argument('-sc', '--scale-factor',
                         default=None,
                         type=float,
@@ -658,14 +703,14 @@ def read_command_line(input_path=None):
     parser.add_argument("-sch5", "--scale-factor-h5",
                         default=1.0,
                         type=float,
-                        help="Scaling factor for HDF5 mesh. Used to scale model to [mm]." +
+                        help="Scaling factor for HDF5 mesh. Used to scale model to [mm]. " +
                              "Note that probes and other parameters are not scaled." +
                              "Do not use in combination with --scale-factor.")
 
     parser.add_argument('-rs', '--resampling-step',
                         default=0.1,
                         type=float,
-                        help="Resampling step used to resample centerline in [m]." +
+                        help="Resampling step used to resample centerline in [m]. " +
                              "Note: If --scale-factor is used, this step will be adjusted accordingly.")
 
     parser.add_argument('-mp', '--meshing-parameters',
@@ -721,6 +766,18 @@ def read_command_line(input_path=None):
     parser.add_argument("--fluid-volume-id", type=int, default=0, help="ID for the fluid volume")
     parser.add_argument("--solid-volume-id", type=int, default=1, help="ID for the solid volume")
 
+    parser.add_argument("-mgr", "--mesh-generation-retries",
+                        type=int,
+                        default=2,
+                        help="Number of mesh generation retries before trying to subdivide and smooth the " +
+                             "input model (default: 2)")
+
+    no_solid = parser.add_mutually_exclusive_group(required=False)
+    no_solid.add_argument('-ns', '--no-solid',
+                          action="store_true",
+                          default=False,
+                          help="Generate mesh without solid.")
+
     # Parse path to get default values
     if required:
         args = parser.parse_args()
@@ -750,8 +807,9 @@ def read_command_line(input_path=None):
 
     return dict(input_model=args.input_model, verbose_print=verbose_print, smoothing_method=args.smoothing_method,
                 smoothing_factor=args.smoothing_factor, smoothing_iterations=args.smoothing_iterations,
-                meshing_method=args.meshing_method, refine_region=args.refine_region, is_atrium=args.is_atrium,
-                add_flow_extensions=args.add_flowextensions, config_path=args.config_path, edge_length=args.edge_length,
+                meshing_method=args.meshing_method, refine_region=args.refine_region,
+                has_multiple_inlets=args.has_multiple_inlets, add_flow_extensions=args.add_flowextensions,
+                config_path=args.config_path, edge_length=args.edge_length,
                 coarsening_factor=args.coarsening_factor, inlet_flow_extension_length=args.inlet_flowextension,
                 number_of_sublayers_fluid=args.number_of_sublayers_fluid,
                 number_of_sublayers_solid=args.number_of_sublayers_solid, visualize=args.visualize,
@@ -763,7 +821,8 @@ def read_command_line(input_path=None):
                 mesh_format=args.mesh_format, flow_rate_factor=args.flow_rate_factor,
                 solid_side_wall_id=args.solid_side_wall_id, interface_fsi_id=args.interface_fsi_id,
                 solid_outer_wall_id=args.solid_outer_wall_id, fluid_volume_id=args.fluid_volume_id,
-                solid_volume_id=args.solid_volume_id)
+                solid_volume_id=args.solid_volume_id, mesh_generation_retries=args.mesh_generation_retries,
+                no_solid=args.no_solid)
 
 
 def main_meshing():

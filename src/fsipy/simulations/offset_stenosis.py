@@ -7,9 +7,11 @@ import numpy as np
 from vampy.simulation.Womersley import make_womersley_bcs, compute_boundary_geometry_acrn
 from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, facets, cells, UserExpression, FacetNormal, ds, \
-    DirichletBC, Measure, inner, parameters
+    DirichletBC, Measure, inner, parameters, assemble
 
-from fsipy.simulations.simulation_common import load_probe_points, print_probe_points, print_mesh_summary
+from fsipy.simulations.simulation_common import load_probe_points, print_probe_points, print_mesh_summary, \
+    calculate_and_print_flow_properties
+
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
@@ -206,7 +208,9 @@ def create_bcs(t, DVP, mesh, boundaries, mu_f,
 
     # Create inlet subdomain for computing the flow rate inside post_solve
     dsi = ds(inlet_id, domain=mesh, subdomain_data=boundaries)
-    return dict(bcs=bcs, inlet=inlet, p_out_bc_val=p_out_bc_val, F_solid_linear=F_solid_linear, n=n, dsi=dsi)
+    inlet_area = assemble(1.0 * dsi)
+    return dict(bcs=bcs, inlet=inlet, p_out_bc_val=p_out_bc_val, F_solid_linear=F_solid_linear, n=n, dsi=dsi,
+                inlet_area=inlet_area)
 
 
 def pre_solve(t, inlet, p_out_bc_val, **namespace):
@@ -226,9 +230,17 @@ def pre_solve(t, inlet, p_out_bc_val, **namespace):
     return dict(inlet=inlet, p_out_bc_val=p_out_bc_val)
 
 
+<<<<<<< HEAD
 def post_solve(probe_points, dvp_, mesh, **namespace):
+=======
+def post_solve(probe_points, dvp_, dt, mesh, inlet_area, dsi, mu_f, rho_f, n, **namespace):
+>>>>>>> a642b55dd2920a3f9f4c7bcd2bd435fecd23ae36
 
     v = dvp_["n"].sub(1, deepcopy=True)
     p = dvp_["n"].sub(2, deepcopy=True)
 
     print_probe_points(v, p, probe_points)
+<<<<<<< HEAD
+=======
+    calculate_and_print_flow_properties(dt, mesh, v, inlet_area, mu_f[0], rho_f[0], n, dsi)
+>>>>>>> a642b55dd2920a3f9f4c7bcd2bd435fecd23ae36
