@@ -230,17 +230,10 @@ def pre_solve(t, inlet, p_out_bc_val, **namespace):
     return dict(inlet=inlet, p_out_bc_val=p_out_bc_val)
 
 
-<<<<<<< HEAD
-def post_solve(probe_points, dvp_, mesh, **namespace):
-=======
 def post_solve(probe_points, dvp_, dt, mesh, inlet_area, dsi, mu_f, rho_f, n, **namespace):
->>>>>>> a642b55dd2920a3f9f4c7bcd2bd435fecd23ae36
 
     v = dvp_["n"].sub(1, deepcopy=True)
     p = dvp_["n"].sub(2, deepcopy=True)
 
     print_probe_points(v, p, probe_points)
-<<<<<<< HEAD
-=======
     calculate_and_print_flow_properties(dt, mesh, v, inlet_area, mu_f[0], rho_f[0], n, dsi)
->>>>>>> a642b55dd2920a3f9f4c7bcd2bd435fecd23ae36
