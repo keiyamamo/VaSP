@@ -1,93 +1,93 @@
 from pathlib import Path
 
-import numpy as np
-import h5py
+
 from dolfin import *
 from turtleFSI.modules import common
 import os
-import re
+
 from postprocessing_common import read_command_line
 
 # set compiler arguments
-parameters["form_compiler"]["quadrature_degree"] = 6 # Not investigated thorougly. See MSc theses of Gjertsen. Doesnt affect the speed
+parameters["form_compiler"]["quadrature_degree"] = 6
 parameters["reorder_dofs_serial"] = False
 
-def read_material_properties(case_path):
-    '''
-    This function loads in material properties from a logfile from the simulation, or from a text file called "material_properties.txt"
-    If using the text file option, each material (fluid and solid) region must be listed in the text file, otherwise stress will not be computed for that region
-    Each line should be formatted like this:
-    {'dx_s_id': 1001, 'material_model': 'StVenantKirchoff', 'rho_s': 1000.0, 'mu_s': 344827.5862068966, 'lambda_s': 3103448.2758620703}
-    {'dx_f_id': 1, 'rho_f': 1000.0, 'mu_f': 0.0035}
-    {'dx_f_id': 1, 'rho_f': 1000.0, 'mu_f': 0.0035}
 
-    '''
+# def read_material_properties(case_path):
+#     '''
+#     This function loads in material properties from a logfile from the simulation, or from a text file called "material_properties.txt"
+#     If using the text file option, each material (fluid and solid) region must be listed in the text file, otherwise stress will not be computed for that region
+#     Each line should be formatted like this:
+#     {'dx_s_id': 1001, 'material_model': 'StVenantKirchoff', 'rho_s': 1000.0, 'mu_s': 344827.5862068966, 'lambda_s': 3103448.2758620703}
+#     {'dx_f_id': 1, 'rho_f': 1000.0, 'mu_f': 0.0035}
+#     {'dx_f_id': 1, 'rho_f': 1000.0, 'mu_f': 0.0035}
 
-    # find all logfiles in simulaation folder (file name must contain the word "logfile")
-    outLog=[file for file in os.listdir(case_path) if 'logfile' in file]
-    solid_properties=[]
-    fluid_properties=[]
-    n_outfiles = len(outLog)
+#     '''
 
-    print_MPI("Found {} output log files".format(n_outfiles))
-    if n_outfiles == 0:
-        print_MPI("Found no output files - ensure the word 'logfile' is in the output text file name, searching for material_properties.txt")
-        if os.path.exists(os.path.join(case_path, "material_properties.txt")):
-            material_properties_file = os.path.join(case_path, "material_properties.txt")
-            print_MPI("found material_properties.txt")
-        else:
-            print_MPI("failed to find material propertiesin case_path")
-    else:
-        print_MPI("Reading material properties from log file: {}".format(outLog[0]))
-        material_properties_file = outLog[0]
+#     # find all logfiles in simulaation folder (file name must contain the word "logfile")
+#     outLog=[file for file in os.listdir(case_path) if 'logfile' in file]
+#     solid_properties=[]
+#     fluid_properties=[]
+#     n_outfiles = len(outLog)
 
-    # Open material properties file
-    outLogPath=os.path.join(case_path,material_properties_file)
-    file1 = open(outLogPath, 'r') 
-    Lines = file1.readlines() 
+#     print_MPI("Found {} output log files".format(n_outfiles))
+#     if n_outfiles == 0:
+#         print_MPI("Found no output files - ensure the word 'logfile' is in the output text file name, searching for material_properties.txt")
+#         if os.path.exists(os.path.join(case_path, "material_properties.txt")):
+#             material_properties_file = os.path.join(case_path, "material_properties.txt")
+#             print_MPI("found material_properties.txt")
+#         else:
+#             print_MPI("failed to find material propertiesin case_path")
+#     else:
+#         print_MPI("Reading material properties from log file: {}".format(outLog[0]))
+#         material_properties_file = outLog[0]
 
-    # Open log file get material properties from that logfile 
-    for line in Lines: 
-        if 'dx_s_id' in line:
-            material_properties_dict = eval(line)
-            solid_properties.append(material_properties_dict)
-        elif 'dx_f_id' in line:
-            material_properties_dict = eval(line)
-            fluid_properties.append(material_properties_dict)
+#     # Open material properties file
+#     outLogPath=os.path.join(case_path,material_properties_file)
+#     file1 = open(outLogPath, 'r') 
+#     Lines = file1.readlines() 
+
+#     # Open log file get material properties from that logfile 
+#     for line in Lines: 
+#         if 'dx_s_id' in line:
+#             material_properties_dict = eval(line)
+#             solid_properties.append(material_properties_dict)
+#         elif 'dx_f_id' in line:
+#             material_properties_dict = eval(line)
+#             fluid_properties.append(material_properties_dict)
     
-    # remove duplicate regions if applicable
-    fluid_properties = remove_duplicates(fluid_properties)
-    solid_properties = remove_duplicates(solid_properties)
+#     # remove duplicate regions if applicable
+#     fluid_properties = remove_duplicates(fluid_properties)
+#     solid_properties = remove_duplicates(solid_properties)
 
 
-    return solid_properties, fluid_properties
+#     return solid_properties, fluid_properties
 
-def remove_duplicates(l):
-    seen = set()
-    new_l = []
-    for d in l:
-        t = tuple(d.items())
-        if t not in seen:
-            seen.add(t)
-            new_l.append(d)
+# def remove_duplicates(l):
+#     seen = set()
+#     new_l = []
+#     for d in l:
+#         t = tuple(d.items())
+#         if t not in seen:
+#             seen.add(t)
+#             new_l.append(d)
     
-    return new_l
+#     return new_l
 
-def print_MPI(print_string):
-    if MPI.rank(MPI.comm_world) == 0:
-        print(print_string)
+# def print_MPI(print_string):
+#     if MPI.rank(MPI.comm_world) == 0:
+#         print(print_string)
 
-def get_mesh_domain_and_boundaries(mesh_path):
-    # Read mesh
-    mesh = Mesh()
-    hdf = HDF5File(MPI.comm_world, mesh_path.__str__(), "r")
-    hdf.read(mesh, "/mesh", False)
-    boundaries = MeshFunction("size_t", mesh, 2)
-    hdf.read(boundaries, "/boundaries")
-    domains = MeshFunction("size_t", mesh, 3)
-    hdf.read(domains, "/domains")
+# def get_mesh_domain_and_boundaries(mesh_path):
+#     # Read mesh
+#     mesh = Mesh()
+#     hdf = HDF5File(MPI.comm_world, mesh_path.__str__(), "r")
+#     hdf.read(mesh, "/mesh", False)
+#     boundaries = MeshFunction("size_t", mesh, 2)
+#     hdf.read(boundaries, "/boundaries")
+#     domains = MeshFunction("size_t", mesh, 3)
+#     hdf.read(domains, "/domains")
 
-    return mesh, domains, boundaries
+#     return mesh, domains, boundaries
 
 def project_solid(tensorForm, fxnSpace, dx_s):#,dx_s_id_list):
     #
@@ -292,6 +292,7 @@ def compute_stress(case_path, mesh_name, dt, stride, save_deg):
     time_between_files = t_1 - t_0
     save_step = round(time_between_files/dt) # This is the output frequency of the simulation
 
+    # NOTE: Instead of using while True, we can use vampy get_datasets function like I did with create_seprate_domain_visualization.py
     while True:
         try:
             f = HDF5File(MPI.comm_world, file_path_d.__str__(), "r")
