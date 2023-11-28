@@ -57,60 +57,46 @@ def epsilon(u):
     return 0.5 * (grad(u) + grad(u).T)
 
 
+def local_project(f, V):
+    u = TrialFunction(V)
+    v = TestFunction(V)
+    a_proj = inner(u, v)*ds
+    b_proj = inner(f, v)*ds
+    A = assemble(a_proj, keep_diagonal=True)
+    A.ident_zeros()
+    b = assemble(b_proj)
+    # solver = LocalSolver(A, b)
+    # solver.factorize()
+    u = Function(V)
+    # solver.solve_local_rhs(u)
+    solve(A, u.vector(), b)
+    # from IPython import embed; embed(); exit(1)
+    return u
+
+
 class STRESS:
-    def __init__(self, u, p, nu, mesh):
+    def __init__(self, u, nu, mesh, velocity_degree):
         boundary_mesh = BoundaryMesh(mesh, 'exterior')
-        self.bmV = VectorFunctionSpace(boundary_mesh, 'CG', 1)
+        self.bmV = VectorFunctionSpace(boundary_mesh, 'DG', velocity_degree -1)
+        self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree -1)
 
         # Compute stress tensor
-        sigma = (2 * nu * epsilon(u)) - (p * Identity(len(u)))
-
+        sigma = (2 * nu * sym(grad(u)))
         # Compute stress on surface
         n = FacetNormal(mesh)
         F = -(sigma * n)
 
         # Compute normal and tangential components
         Fn = inner(F, n)  # scalar-valued
-        Ft = F - (Fn * n)  # vector-valued
-
-        # Integrate against piecewise constants on the boundary
-        scalar = FunctionSpace(mesh, 'DG', 0)
-        vector = VectorFunctionSpace(mesh, 'CG', 1)
-        scaling = FacetArea(mesh)  # Normalise the computed stress relative to the size of the element
-
-        v = TestFunction(scalar)
-        w = TestFunction(vector)
-
-        # Create functions
-        self.Fn = Function(scalar)
-        self.Ftv = Function(vector)
-        self.Ft = Function(scalar)
-
-        self.Ln = 1 / scaling * v * Fn * ds
-        self.Ltv = 1 / (2 * scaling) * inner(w, Ft) * ds
-        self.Lt = 1 / scaling * inner(v, self.norm_l2(self.Ftv)) * ds
+        self.Ft = F - (Fn * n)  # vector-valued
 
     def __call__(self):
         """
-        Compute stress for given velocity field u and pressure field p
+        Compute stress for given velocity field u
 
         Returns:
             Ftv_mb (Function): Shear stress
         """
+        self.Ftv = local_project(self.Ft, self.V)
 
-        # Assemble vectors
-        assemble(self.Ltv, tensor=self.Ftv.vector())
-        self.Ftv_bm = interpolate(self.Ftv, self.bmV)
-
-        return self.Ftv_bm
-
-    def norm_l2(self, u):
-        """
-        Compute norm of vector u in expression form
-        Args:
-            u (Function): Function to compute norm of
-
-        Returns:
-            norm (Power): Norm as expression
-        """
-        return pow(inner(u, u), 0.5)
+        return self.Ftv

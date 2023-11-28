@@ -33,29 +33,29 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
     """
     # File paths
 
-    for file in os.listdir(case_path):
-        file_path = os.path.join(case_path, file)
-        if os.path.exists(os.path.join(file_path, "1")):
-            visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
-        elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
-            visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
-            
-    visualization_separate_domain_path = Path(visualization_separate_domain_path)
-    file_path_u = visualization_separate_domain_path / "v.h5"
+    # for file in os.listdir(case_path):
+    #     file_path = os.path.join(case_path, file)
+    #     if os.path.exists(os.path.join(file_path, "1")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "1/Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    #     elif os.path.exists(os.path.join(file_path, "Visualization_separate_domain")):
+    #         visualization_separate_domain_path = os.path.join(file_path, "Visualization_separate_domain")
+    visualization_separate_domain_path = Path(case_path) / "Visualization_separate_domain"
+    # visualization_separate_domain_path = Path(visualization_separate_domain_path)
+    file_path_u = visualization_separate_domain_path / "u.h5"
     WSS_ts_path = (visualization_separate_domain_path / "WSS_ts.xdmf").__str__()
 
     # get fluid-only version of the mesh
     mesh_name = mesh_name + ".h5"
-    mesh_name = mesh_name.replace(".h5","_fluid_only.h5")
-    mesh_path = os.path.join(case_path, "mesh", mesh_name)
+    mesh_name = mesh_name.replace(".h5","_fluid.h5")
+    mesh_path = os.path.join(case_path, "Mesh", mesh_name)
 
     # if save_deg = 1, make the refined mesh path the same (Call this mesh_viz)
     if save_deg == 1:
         mesh_path_viz = mesh_path
     else:
-        mesh_path_viz = mesh_path.replace("_fluid_only.h5","_refined_fluid_only.h5")
+        mesh_path_viz = mesh_path.replace("_fluid.h5","_refined_fluid.h5")
 
     mesh_path = Path(mesh_path)
     mesh_path_viz = Path(mesh_path_viz)
@@ -75,8 +75,10 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
     
     if MPI.rank(MPI.comm_world) == 0:
         print("Define function spaces")
-    V_b1 = VectorFunctionSpace(bm, "CG", 1)
-    U_b1 = FunctionSpace(bm, "CG", 1)
+    # V_b1 = VectorFunctionSpace(bm, "CG", 1)
+    V_b1 = VectorFunctionSpace(mesh, "DG", 1)
+    # U_b1 = FunctionSpace(bm, "CG", 1)
+    U_b1 = FunctionSpace(mesh, "DG", 1)
 
     # Create visualization function space for d, v 
     dve_viz = VectorElement('CG', mesh_viz.ufl_cell(), 1)
@@ -118,7 +120,8 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
     twssg = Function(V_b1)
     tau_prev = Function(V_b1)
 
-    stress = STRESS(u, 0.0, nu, mesh)
+    # stress = STRESS(u, 0.0, nu, mesh)
+    stress = STRESS(u, 1, mesh, 2)
 
     WSS_file = XDMFFile(MPI.comm_world, WSS_ts_path)
 
@@ -153,8 +156,7 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
             if MPI.rank(MPI.comm_world) == 0:
                 print("=" * 10, "Calculating WSS at Timestep: {}".format(t), "=" * 10)
             f.read(u_viz, vec_name)
-    
-    
+
             # Calculate v in P2 based on visualization refined P1
             u.vector()[:] = dv_trans*u_viz.vector()
         
@@ -177,7 +179,8 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
             wss_abs.rename("Wall Shear Stress", "WSS_abs")
         
             # Write results
-            WSS_file.write(wss_abs, t)
+            # WSS_file.write(wss_abs, t)
+            WSS_file.write_checkpoint(wss_abs, "wss_abs", t, XDMFFile.Encoding.HDF5, True)
         
             # Compute TWSSG
             if MPI.rank(MPI.comm_world) == 0:
@@ -246,8 +249,8 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
             f.parameters["functions_share_mesh"] = True
             f.parameters["rewrite_function_mesh"] = False
 
-        rrt.write(RRT)
-        osi.write(OSI)
+        rrt.write_checkpoint(RRT, "RRT", 0)
+        osi.write_checkpoint(OSI, "OSI", 0)
 
     # Save WSS and TWSSG
     wss_path = (visualization_separate_domain_path / "WSS.xdmf").__str__()
@@ -261,8 +264,8 @@ def compute_wss(case_path,mesh_name, nu, dt, stride, save_deg):
         f.parameters["functions_share_mesh"] = True
         f.parameters["rewrite_function_mesh"] = False
 
-    wss.write(WSS_abs)
-    twssg.write(TWSSG)
+    wss.write_checkpoint(WSS_abs, "WSS_abs", 0)
+    twssg.write_checkpoint(TWSSG, "TWWSSG", 0)
 
 if __name__ == '__main__':
     folder, mesh, nu,_,_, dt, stride, save_deg,_,_ = read_command_line()
