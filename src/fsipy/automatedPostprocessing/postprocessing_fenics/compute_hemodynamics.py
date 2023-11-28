@@ -1,15 +1,16 @@
 from pathlib import Path
 
-from dolfin import *
-import os
-
+from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, TestFunction, \
+    inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, VectorElement, PETScDMCollection, \
+from fsipy.automatedPostprocessing.postprocessing_common import read_parameters_from_file
 
 # set compiler arguments
-# parameters["form_compiler"]["quadrature_degree"] = 6 # Not investigated thorougly. See MSc theses of Gjertsen. 
-# parameters["reorder_dofs_serial"] = False
+parameters["form_compiler"]["quadrature_degree"] = 6
+parameters["reorder_dofs_serial"] = False
 
-
+#TODO: optimize the function
 def local_project(f, V):
+
     u = TrialFunction(V)
     v = TestFunction(V)
     a_proj = inner(u, v)*ds
@@ -17,23 +18,18 @@ def local_project(f, V):
     A = assemble(a_proj, keep_diagonal=True)
     A.ident_zeros()
     b = assemble(b_proj)
-    # solver = LocalSolver(A, b)
-    # solver.factorize()
     u = Function(V)
-    # solver.solve_local_rhs(u)
     solve(A, u.vector(), b)
-    # from IPython import embed; embed(); exit(1)
     return u
 
 
-class STRESS:
+class Stress:
     def __init__(self, u, nu, mesh, velocity_degree):
-        boundary_mesh = BoundaryMesh(mesh, 'exterior')
-        self.bmV = VectorFunctionSpace(boundary_mesh, 'DG', velocity_degree -1)
         self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree -1)
 
         # Compute stress tensor
         sigma = (2 * nu * sym(grad(u)))
+
         # Compute stress on surface
         n = FacetNormal(mesh)
         F = -(sigma * n)
@@ -54,29 +50,19 @@ class STRESS:
         return self.Ftv
     
 
-def read_command_line():
+def parse_arguments():
     """Read arguments from commandline"""
     parser = ArgumentParser()
 
-    parser.add_argument('--case', type=str, default="cyl_test", help="Path to simulation results",
-                        metavar="PATH")
-    parser.add_argument('--mesh', type=str, default="artery_coarse_rescaled", help="Mesh File Name",
-                        metavar="PATH")
-    parser.add_argument('--nu', type=float, default=3.5e-3, help="Fluid Viscosity used in simulation")
-    parser.add_argument('--E_s', type=float, default=1e6, help="Elastic Modulus (Pascals) used in simulation")
-    parser.add_argument('--nu_s', type=float, default=0.45, help="Poisson's Ratio used in simulation")
-    parser.add_argument('--dt', type=float, default=0.001, help="Time step of simulation")
-    parser.add_argument('--stride', type=int, default=1, help="Save frequency of simulation")    
-    parser.add_argument('--save_deg', type=int, default=2, help="Input save_deg of simulation, i.e whether the intermediate P2 nodes were saved. Entering save_deg = 1 when the simulation was run with save_deg = 2 will result in only the corner nodes being used in postprocessing",
-                        metavar="PATH")
-    parser.add_argument('--start_t', type=float, default=0.0, help="Desired start time for postprocessing")
-    parser.add_argument('--end_t', type=float, default=100.0, help="Desired end time for postprocessing")
+    parser.add_argument('--folder', type=Path, default="cyl_test", help="Path to simulation results")
+    parser.add_argument('--mesh', type=Path, default="artery_coarse_rescaled", help="Mesh File Name")
+
     args = parser.parse_args()
 
-    return args.case, args.mesh, args.nu, args.E_s, args.nu_s, args.dt, args.stride, args.save_deg, args.start_t, args.end_t
+    return args
 
 
-def compute_hemodyanamics(case_path, mesh_name, nu, dt, stride, save_deg, velocity_degree):
+def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, nu):
 
     """
     Args:
@@ -87,83 +73,82 @@ def compute_hemodyanamics(case_path, mesh_name, nu, dt, stride, save_deg, veloci
         stride: reduce the output data frequency by this factor, relative to input data (v.h5/d.h5 in this script)
         save_deg (int): element degree saved from P2-P1 simulation (save_deg = 1 is corner nodes only)
     """
-    # File paths
-    visualization_separate_domain_path = Path(case_path) / "Visualization_separate_domain"
-    file_path_u = visualization_separate_domain_path / "u.h5"
-    WSS_ts_path = (visualization_separate_domain_path / "WSS_ts.xdmf").__str__()
+    
 
-    # get fluid-only version of the mesh
-    mesh_name = mesh_name + ".h5"
-    mesh_name = mesh_name.replace(".h5","_fluid.h5")
-    mesh_path = os.path.join(case_path, "Mesh", mesh_name)
+    file_path_u = visualization_separate_domain_folder / "u.h5"
+    assert file_path_u.exists(), f"Velocity file {file_path_u} not found.  Make sure to run create_hdf5.py first."
 
-    # if save_deg = 1, make the refined mesh path the same (Call this mesh_viz)
-    if save_deg == 1:
-        mesh_path_viz = mesh_path
-    else:
-        mesh_path_viz = mesh_path.replace("_fluid.h5","_refined_fluid.h5")
 
-    mesh_path = Path(mesh_path)
-    mesh_path_viz = Path(mesh_path_viz)
+    with HDF5File(MPI.comm_world, str(file_path_u), "r") as f:
+        dataset_u = get_dataset_names(f, step=stride, vector_filename="/velocity/vector_%d")
+    
+    # Read the original mesh and also the refined mesh
+    if MPI.rank(MPI.comm_world) == 0:
+        print("--- Read the original mesh and also the refined mesh \n")
 
-    # Read mesh saved as HDF5 format
     mesh = Mesh()
-    with HDF5File(MPI.comm_world, mesh_path.__str__(), "r") as mesh_file:
+    with HDF5File(MPI.comm_world, str(mesh_path), "r") as mesh_file:
         mesh_file.read(mesh, "mesh", False)
 
-    # Read refined mesh saved as HDF5 format
-    mesh_viz = Mesh()
-    with HDF5File(MPI.comm_world, mesh_path_viz.__str__(), "r") as mesh_file:
+    refined_mesh_path = mesh_path.with_name(mesh_path.stem + "_refined.h5")
+    refined_mesh = Mesh()
+    with HDF5File(MPI.comm_world,  str(refined_mesh_path), "r") as mesh_file:
         mesh_file.read(mesh_viz, "mesh", False)
 
+   # Define functionspaces and functions
     if MPI.rank(MPI.comm_world) == 0:
-        print("Define function spaces")
+        print("--- Define function spaces \n")
 
-    V_b1 = VectorFunctionSpace(mesh, "DG", 1)
-    U_b1 = FunctionSpace(mesh, "DG", 1)
+    # Create function space for the velocity on the refined mesh with P1 elements
+    Vv_refined = VectorFunctionSpace(refined_mesh, "CG", 1)
+    # Create function space for the velocity on the refined mesh with P2 elements
+    Vv = VectorFunctionSpace(mesh, "CG", 2)
 
-    # Create visualization function space for d, v 
-    dve_viz = VectorElement('CG', mesh_viz.ufl_cell(), 1)
-    FSdv_viz = FunctionSpace(mesh_viz, dve_viz)   # Visualisation FunctionSpace for d and v
-
-    # Create higher-order function space for d, v and p
-    dve = VectorElement('CG', mesh.ufl_cell(), save_deg)
-    FSdv = FunctionSpace(mesh, dve)   # Higher degree FunctionSpace for d and v
+    # Create function space for hemodynamic indices with DG1 elements
+    Vv = VectorFunctionSpace(mesh, "DG", 1)
+    V = FunctionSpace(mesh, "DG", 1)
 
     if MPI.rank(MPI.comm_world) == 0:
         print("Define functions")
 
-    # Create higher-order function on unrefined mesh for post-processing calculations
-    u = Function(FSdv)
+    # Create functions
 
-    # Create lower-order function for visualization on refined mesh
-    u_viz = Function(FSdv_viz)
+    # u_p2 is the velocity on the refined mesh with P2 elements
+    u_p2 = Function(Vv)
+    # u_p1 is the velocity on the refined mesh with P1 elements
+    u_p1 = Function(Vv_refined)
 
     # Create a transfer matrix between higher degree and lower degree (visualization) function spaces
-    dv_trans = PETScDMCollection.create_transfer_matrix(FSdv_viz,FSdv)
+    u_transfer_matrix = PETScDMCollection.create_transfer_matrix(Vv_refined, Vv)
     
-    # RRT
-    RRT = Function(U_b1)
+    # Relative residence time 
+    RRT = Function(V)
+    RRT_avg = Function(V)
 
-    # OSI
-    OSI = Function(U_b1)
+    # Oscillatory shear index
+    OSI = Function(V)
+    OSI_avg = Function(V)
+
+    # Endothelial cell activation potential
+    ECAP = Function(V)
+    ECAP_avg = Function(V)
 
     # WSS_mean
-    WSS_mean = Function(V_b1)
-    wss_mean = Function(U_b1)
+    WSS_mean = Function(Vv)
+    WSS_mean_avg = Function(Vv)
 
-    # WSS_abs
-    WSS_abs = Function(U_b1)
-    #wss_abs = Function(U_b1)
+    # Time averaged wall shear stress
+    TAWSS = Function(V)
+    TAWSS_avg = Function(V)
 
-    # TWSSG
+    # Temporal wall shear stress gradient
     TWSSG = Function(U_b1)
-    #twssg_ = Function(U_b1)
+    TWSSG_avg = Function(U_b1)
     twssg = Function(V_b1)
     tau_prev = Function(V_b1)
 
-    # stress = STRESS(u, 0.0, nu, mesh)
-    stress = STRESS(u, 1, mesh, 2)
+    # Define stress object with P2 elements and non-refined mesh
+    stress = Stress(u_p2, nu, mesh, 2)
 
     WSS_file = XDMFFile(MPI.comm_world, WSS_ts_path)
 
@@ -174,19 +159,7 @@ def compute_hemodyanamics(case_path, mesh_name, nu, dt, stride, save_deg, veloci
     if MPI.rank(MPI.comm_world) == 0:
         print("=" * 10, "Start post processing", "=" * 10)
 
-    file_counter = 0 # Index of first time step
-    n = 0
-    file_1 = 1 # Index of second time step
-
-    f = HDF5File(MPI.comm_world, file_path_u.__str__(), "r")
-    vec_name = "/velocity/vector_%d" % file_counter
-    t_0 = f.attributes(vec_name)["timestamp"]
-    vec_name = "/velocity/vector_%d" % file_1
-    t_1 = f.attributes(vec_name)["timestamp"]  
-    time_between_files = t_1 - t_0
-    save_step = round(time_between_files/dt) # This is the output frequency of the simulation
-
-    
+    # NOTE: Inside the loop, there is a lof ot projection between different function spaces. This is not efficient.    
     while True:
         # Read in velocity solution to vector function u
         try:
@@ -221,7 +194,6 @@ def compute_hemodyanamics(case_path, mesh_name, nu, dt, stride, save_deg, veloci
             wss_abs.rename("Wall Shear Stress", "WSS_abs")
         
             # Write results
-            # WSS_file.write(wss_abs, t)
             WSS_file.write_checkpoint(wss_abs, "wss_abs", t, XDMFFile.Encoding.HDF5, True)
         
             # Compute TWSSG
@@ -309,7 +281,34 @@ def compute_hemodyanamics(case_path, mesh_name, nu, dt, stride, save_deg, veloci
     wss.write_checkpoint(WSS_abs, "WSS_abs", 0)
     twssg.write_checkpoint(TWSSG, "TWWSSG", 0)
 
+
 if __name__ == '__main__':
-    folder, mesh, nu,_,_, dt, stride, save_deg,_,_ = read_command_line()
-    compute_hemodyanamics(folder, mesh, nu, dt, stride, save_deg)
+
+    if MPI.size(MPI.comm_world) == 1:
+        print("--- Running in serial mode, you can use MPI to speed up the postprocessing. \n")
+
+    args = parse_arguments()
+    # Define paths for visulization and mesh files
+    folder_path = Path(args.folder)
+    assert folder_path.exists(), f"Folder {folder_path} not found."
+    visualization_separate_domain_folder = folder_path / "Visualization_separate_domain"
+    assert visualization_separate_domain_folder.exists(), f"Folder {visualization_separate_domain_folder} not found. " +
+                                                            "Please run create_hdf5.py first."
+
+    parameters = read_parameters_from_file(args.folder)
+    save_deg = parameters["save_deg"]
+    assert save_deg == 1, "This script only works for save_deg = 2"
+
+    if args.mesh_path:
+        mesh_path = Path(args.mesh_path)
+        if MPI.rank(MPI.comm_world) == 0:
+            print("--- Using user-defined mesh \n")
+        assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
+    else:
+        mesh_path = folder_path / "Mesh"
+        if MPI.rank(MPI.comm_world) == 0:
+            print("--- Using mesh from default turrtleFSI Mesh folder \n")
+        assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
+
+    compute_hemodyanamics(visualization_separate_domain_folder, args.mesh_path, nu)
 
