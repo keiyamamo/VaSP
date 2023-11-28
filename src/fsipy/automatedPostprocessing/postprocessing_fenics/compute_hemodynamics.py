@@ -1,3 +1,8 @@
+# Copyright (c) 2023 Simula Research Laboratory
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Contributions:
+#  Kei Yamamoto
+
 from pathlib import Path
 
 from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, TestFunction, \
