@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 
 
+
 def parse_arguments() -> argparse.Namespace:
     """
     Parse command line arguments.
@@ -24,3 +25,29 @@ def parse_arguments() -> argparse.Namespace:
                         help="Specify the log level (default is 20, which is INFO)")
 
     return parser.parse_args()
+
+def project_dg(v, V, dx_s) -> dolfin.Function:
+    """
+    Project a function v into a DG space V.
+    It perfomrs the same operation as dolfin.project, but it is more efficient
+    since we use local_solver which is possible since we use DG spaces.
+    
+    Args:
+        v (dolfin.Function): Function to be projected
+        V (dolfin.FunctionSpace): DG space
+        dx_s (dolfin.Measure): Measure over the solid domain
+    
+    Returns:
+        dolfin.Function: Projected function
+    """
+    v = TestFunction(V)
+    u = TrialFunction(V)
+    a = inner(u, v)*dx_s
+    L = inner(v, v)*dx_s
+    u_ = Function(V)
+    solver = LocalSolver(a, L)
+    solver.factorize()
+    solver.solve_local_rhs(u_)
+
+    return u_
+

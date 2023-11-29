@@ -3,23 +3,46 @@
 # Contributions:
 #  Kei Yamamoto
 
+"""
+This script computes hemodynamic indices from the velocity field.
+It is assumed that the user has already run create_hdf5.py to create the hdf5 files 
+and obtained u.h5 in the Visualization_separate_domain folder.
+"""
+
 from pathlib import Path
+import argparse
 
 from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, TestFunction, \
-    inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, VectorElement, PETScDMCollection, \
+    inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, VectorElement, PETScDMCollection
 from fsipy.automatedPostprocessing.postprocessing_common import read_parameters_from_file
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
 parameters["reorder_dofs_serial"] = False
 
-#TODO: optimize the function
-def local_project(f, V):
 
+def parse_arguments():
+    """Read arguments from commandline"""
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument('--folder', type=Path, help="Path to simulation results folder")
+    parser.add_argument('--mesh-path', type=Path, default=None,
+                        help="Path to the mesh file (default: <folder_path>/Mesh/mesh.h5)")
+    args = parser.parse_args()
+
+    return args
+
+
+#TODO: optimize the function
+def _surface_project(f, V):
+    """
+    Project a function contains surface integral onto a function space V
+    """
     u = TrialFunction(V)
     v = TestFunction(V)
     a_proj = inner(u, v)*ds
     b_proj = inner(f, v)*ds
+    # keep_diagonal=True & ident_zeros() are necessary for the matrix to be invertible
     A = assemble(a_proj, keep_diagonal=True)
     A.ident_zeros()
     b = assemble(b_proj)
@@ -50,21 +73,10 @@ class Stress:
         Returns:
             Ftv_mb (Function): Shear stress
         """
-        self.Ftv = local_project(self.Ft, self.V)
+        self.Ftv = _surface_project(self.Ft, self.V)
 
         return self.Ftv
     
-
-def parse_arguments():
-    """Read arguments from commandline"""
-    parser = ArgumentParser()
-
-    parser.add_argument('--folder', type=Path, default="cyl_test", help="Path to simulation results")
-    parser.add_argument('--mesh', type=Path, default="artery_coarse_rescaled", help="Mesh File Name")
-
-    args = parser.parse_args()
-
-    return args
 
 
 def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, nu):
@@ -297,8 +309,8 @@ if __name__ == '__main__':
     folder_path = Path(args.folder)
     assert folder_path.exists(), f"Folder {folder_path} not found."
     visualization_separate_domain_folder = folder_path / "Visualization_separate_domain"
-    assert visualization_separate_domain_folder.exists(), f"Folder {visualization_separate_domain_folder} not found. " +
-                                                            "Please run create_hdf5.py first."
+    assert visualization_separate_domain_folder.exists(), f"Folder {visualization_separate_domain_folder} not found. " \
+                                                            "Please make sure to run create_hdf5.py first."
 
     parameters = read_parameters_from_file(args.folder)
     save_deg = parameters["save_deg"]
