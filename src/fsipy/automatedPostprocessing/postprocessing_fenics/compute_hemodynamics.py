@@ -13,8 +13,10 @@ from pathlib import Path
 import argparse
 
 from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, TestFunction, \
-    inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, VectorElement, PETScDMCollection
+    inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, VectorElement, PETScDMCollection, grad, sym, solve
+from vampy.automatedPostprocessing.postprocessing_common import get_dataset_names
 from fsipy.automatedPostprocessing.postprocessing_common import read_parameters_from_file
+from fsipy.automatedPostprocessing.postprocessing_fenics.postprocessing_fenics_common import project_dg
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
@@ -27,7 +29,8 @@ def parse_arguments():
 
     parser.add_argument('--folder', type=Path, help="Path to simulation results folder")
     parser.add_argument('--mesh-path', type=Path, default=None,
-                        help="Path to the mesh file (default: <folder_path>/Mesh/mesh.h5)")
+                        help="Path to the mesh file. If not given (None), it will assume that mesh is located <folder_path>/Mesh/mesh.h5)")
+    parser.add_argument("--stride", type=int, default=1, help="Save frequency of output data")
     args = parser.parse_args()
 
     return args
@@ -52,11 +55,11 @@ def _surface_project(f, V):
 
 
 class Stress:
-    def __init__(self, u, nu, mesh, velocity_degree):
+    def __init__(self, u, mu, mesh, velocity_degree):
         self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree -1)
 
         # Compute stress tensor
-        sigma = (2 * nu * sym(grad(u)))
+        sigma = (2 * mu * sym(grad(u)))
 
         # Compute stress on surface
         n = FacetNormal(mesh)
@@ -79,7 +82,7 @@ class Stress:
     
 
 
-def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, nu):
+def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, stride=1):
 
     """
     Args:
@@ -94,23 +97,24 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, nu):
 
     file_path_u = visualization_separate_domain_folder / "u.h5"
     assert file_path_u.exists(), f"Velocity file {file_path_u} not found.  Make sure to run create_hdf5.py first."
-
+    file_u = HDF5File(MPI.comm_world, str(file_path_u), "r")
 
     with HDF5File(MPI.comm_world, str(file_path_u), "r") as f:
-        dataset_u = get_dataset_names(f, step=stride, vector_filename="/velocity/vector_%d")
+        dataset = get_dataset_names(f, step=stride, vector_filename="/velocity/vector_%d")
     
     # Read the original mesh and also the refined mesh
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Read the original mesh and also the refined mesh \n")
 
+    fluid_mesh_path = mesh_path / "mesh_fluid.h5"
     mesh = Mesh()
-    with HDF5File(MPI.comm_world, str(mesh_path), "r") as mesh_file:
+    with HDF5File(MPI.comm_world, str(fluid_mesh_path), "r") as mesh_file:
         mesh_file.read(mesh, "mesh", False)
 
-    refined_mesh_path = mesh_path.with_name(mesh_path.stem + "_refined.h5")
+    refined_mesh_path = mesh_path / "mesh_refined_fluid.h5"
     refined_mesh = Mesh()
     with HDF5File(MPI.comm_world,  str(refined_mesh_path), "r") as mesh_file:
-        mesh_file.read(mesh_viz, "mesh", False)
+        mesh_file.read(refined_mesh, "mesh", False)
 
    # Define functionspaces and functions
     if MPI.rank(MPI.comm_world) == 0:
@@ -119,184 +123,144 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, nu):
     # Create function space for the velocity on the refined mesh with P1 elements
     Vv_refined = VectorFunctionSpace(refined_mesh, "CG", 1)
     # Create function space for the velocity on the refined mesh with P2 elements
-    Vv = VectorFunctionSpace(mesh, "CG", 2)
+    Vv_non_refined = VectorFunctionSpace(mesh, "CG", 2)
 
     # Create function space for hemodynamic indices with DG1 elements
     Vv = VectorFunctionSpace(mesh, "DG", 1)
     V = FunctionSpace(mesh, "DG", 1)
 
     if MPI.rank(MPI.comm_world) == 0:
-        print("Define functions")
+        print("--- Define functions")
 
     # Create functions
 
     # u_p2 is the velocity on the refined mesh with P2 elements
-    u_p2 = Function(Vv)
+    u_p2 = Function(Vv_non_refined)
     # u_p1 is the velocity on the refined mesh with P1 elements
     u_p1 = Function(Vv_refined)
 
     # Create a transfer matrix between higher degree and lower degree (visualization) function spaces
-    u_transfer_matrix = PETScDMCollection.create_transfer_matrix(Vv_refined, Vv)
+    u_transfer_matrix = PETScDMCollection.create_transfer_matrix(Vv_refined, Vv_non_refined)
+
+    # Time-dependent wall shear stress
+    WSS = Function(Vv)
     
     # Relative residence time 
     RRT = Function(V)
-    RRT_avg = Function(V)
 
     # Oscillatory shear index
     OSI = Function(V)
-    OSI_avg = Function(V)
 
     # Endothelial cell activation potential
     ECAP = Function(V)
-    ECAP_avg = Function(V)
 
-    # WSS_mean
-    WSS_mean = Function(Vv)
-    WSS_mean_avg = Function(Vv)
-
-    # Time averaged wall shear stress
+    # Time averaged wall shear stress and mean WSS magnitude
     TAWSS = Function(V)
-    TAWSS_avg = Function(V)
+    WSS_mean = Function(Vv)
 
     # Temporal wall shear stress gradient
-    TWSSG = Function(U_b1)
-    TWSSG_avg = Function(U_b1)
-    twssg = Function(V_b1)
-    tau_prev = Function(V_b1)
+    TWSSG = Function(V)
+    twssg = Function(Vv)
+    tau_prev = Function(Vv)
 
     # Define stress object with P2 elements and non-refined mesh
-    stress = Stress(u_p2, nu, mesh, 2)
+    stress = Stress(u_p2, mu, mesh, 2)
 
-    WSS_file = XDMFFile(MPI.comm_world, WSS_ts_path)
+    # Create XDMF files for saving indices
+    hemodynamic_indices_path = visualization_separate_domain_path.parent / "Hemodynamic_indices"
+    hemodynamic_indices_path.mkdir(parents=True, exist_ok=True)
+    index_names = ["RRT", "OSI", "ECAP", "WSS", "TAWSS", "TWSSG"]
+    index_variables = [RRT, OSI, ECAP, WSS, TAWSS, TWSSG]
+    index_dict = dict(zip(index_names, index_variables))
+    xdmf_paths = [hemodynamic_indices_path / f"{name}.xdmf" for name in index_names]
 
-    WSS_file.parameters["flush_output"] = True
-    WSS_file.parameters["functions_share_mesh"] = True
-    WSS_file.parameters["rewrite_function_mesh"] = False
+    indices = {}
+    for index, path in zip(index_names, xdmf_paths):
+        indices[index] = XDMFFile(MPI.comm_world, str(path))
+        indices[index].parameters["rewrite_function_mesh"] = False
+        indices[index].parameters["flush_output"] = True
+        indices[index].parameters["functions_share_mesh"] = True
 
     if MPI.rank(MPI.comm_world) == 0:
         print("=" * 10, "Start post processing", "=" * 10)
 
-    # NOTE: Inside the loop, there is a lof ot projection between different function spaces. This is not efficient.    
-    while True:
-        # Read in velocity solution to vector function u
-        try:
-            f = HDF5File(MPI.comm_world, file_path_u.__str__(), "r")
-            vec_name = "/velocity/vector_%d" % file_counter
-            t = f.attributes(vec_name)["timestamp"]
+    # Get time difference between two consecutive time steps
+    dt = file_u.attributes(dataset[1])["timestamp"] - file_u.attributes(dataset[0])["timestamp"]
 
+    counter = 0
+    for data in dataset:
+        # Read velocity data and interpolate to P2 space
+        file_u.read(u_p1, data)
+        u_p2.vector()[:] = u_transfer_matrix * u_p1.vector()
 
-            if MPI.rank(MPI.comm_world) == 0:
-                print("=" * 10, "Calculating WSS at Timestep: {}".format(t), "=" * 10)
-            f.read(u_viz, vec_name)
+        t = file_u.attributes(dataset[counter])["timestamp"]
+        if MPI.rank(MPI.comm_world) == 0:
+            print("=" * 10, f"Calculating WSS at Timestep: {t}", "=" * 10)
 
-            # Calculate v in P2 based on visualization refined P1
-            u.vector()[:] = dv_trans*u_viz.vector()
-        
-            # Compute WSS
-            if MPI.rank(MPI.comm_world) == 0:
-                print("Compute WSS (mean)")
-            tau = stress()     
-        
-            # tau.vector()[:] = tau.vector()[:] * 1000 # Removed this line, presumably a unit conversion
-            WSS_mean.vector().axpy(1, tau.vector())
-        
-            if MPI.rank(MPI.comm_world) == 0:
-                print("Compute WSS (absolute value)")
-        
-            wss_abs = project(inner(tau,tau)**(1/2),U_b1) # Calculate magnitude of Tau (wss_abs)
-            WSS_abs.vector().axpy(1, wss_abs.vector())  # WSS_abs (cumulative, added together)
-            # axpy : Add multiple of given matrix (AXPY operation)
-        
-            # Name functions
-            wss_abs.rename("Wall Shear Stress", "WSS_abs")
-        
-            # Write results
-            WSS_file.write_checkpoint(wss_abs, "wss_abs", t, XDMFFile.Encoding.HDF5, True)
-        
-            # Compute TWSSG
-            if MPI.rank(MPI.comm_world) == 0:
-                print("Compute TWSSG")
-            twssg.vector().set_local((tau.vector().get_local() - tau_prev.vector().get_local()) / dt) # CHECK if this needs to be the time between files or the timestep of the simulation...
-            twssg.vector().apply("insert")
-            twssg_ = project(inner(twssg,twssg)**(1/2),U_b1) # Calculate magnitude of TWSSG vector
-            TWSSG.vector().axpy(1, twssg_.vector())
-        
-            # Update tau
-            if MPI.rank(MPI.comm_world) == 0:
-                print("Update WSS \n")
-            tau_prev.vector().zero()
-            tau_prev.vector().axpy(1, tau.vector())
-            n += 1
-                
-            # Update file_counter
-            file_counter += stride
+        # compute WSS and accumulate for time-averaged WSS
+        tau = stress()
 
-        except Exception as error:
-            print("An exception occurred:", error) # An exception occurred: division by zero
+        # Write temporal WSS
+        tau.rename("WSS", "WSS")
+        indices["WSS"].write_checkpoint(tau, "WSS", t, XDMFFile.Encoding.HDF5, append=True)
 
-            if MPI.rank(MPI.comm_world) == 0:
-                print("=" * 10, "Finished reading solutions", "=" * 10)
-            break   
+        # Compute time-averaged WSS by accumulating WSS magnitude
+        tawss = project(inner(tau, tau) ** (1 / 2), V)
+        TAWSS.vector().axpy(1, tawss.vector())
+
+        # Simply accumulate WSS for computing OSI and ECAP later
+        WSS_mean.vector().axpy(1, tau.vector())
+    
+        # Compute TWSSG
+        twssg.vector().set_local((tau.vector().get_local() - tau_prev.vector().get_local()) / dt)
+        twssg.vector().apply("insert")
+        twssg_ = project_dg(inner(twssg, twssg) ** (1 / 2) , V)
+        TWSSG.vector().axpy(1, twssg_.vector())
+    
+        # Update tau    
+        tau_prev.vector().zero()
+        tau_prev.vector().axpy(1, tau.vector())
+
+        counter += 1
+    
+    indices["WSS"].close()
 
     if MPI.rank(MPI.comm_world) == 0:
         print("=" * 10, "Saving hemodynamic indices", "=" * 10)
 
-    TWSSG.vector()[:] = TWSSG.vector()[:] / n
-    WSS_abs.vector()[:] = WSS_abs.vector()[:] / n
-    WSS_mean.vector()[:] = WSS_mean.vector()[:] / n
+    index_dict['TWSSG'].vector()[:] = index_dict['TWSSG'].vector()[:] / counter
+    index_dict['TAWSS'].vector()[:] = index_dict['TAWSS'].vector()[:] / counter
+    WSS_mean.vector()[:] = WSS_mean.vector()[:] / counter
+    wss_mean = project(inner(WSS_mean, WSS_mean) ** (1 / 2), V)
+    wss_mean_vec = wss_mean.vector().get_local()
+    tawss_vec = index_dict['TAWSS'].vector().get_local()
+    from IPython import embed; embed(); exit(1)
+    # Compute RRT, OSI, and ECAP based on mean and absolute WSS
+    index_dict['RRT'].vector().set_local(1 / wss_mean_vec)
+    index_dict['OSI'].vector().set_local(0.5 * (1 - wss_mean_vec / tawss_vec))
+    index_dict['ECAP'].vector().set_local(index_dict['OSI'].vector().get_local() / tawss_vec)
 
-    WSS_abs.rename("WSS", "WSS")
-    TWSSG.rename("TWSSG", "TWSSG")
+    for index in ['RRT', 'OSI', 'ECAP']:
+        index_dict[index].vector().apply("insert")
 
-    try:
-        wss_mean = project(inner(WSS_mean,WSS_mean)**(1/2),U_b1) # Calculate magnitude of WSS_mean vector
-        wss_mean_vec = wss_mean.vector().get_local()
-        wss_abs_vec = WSS_abs.vector().get_local()
+    # Rename displayed variable names
+    for name, var in index_dict.items():
+        var.rename(name, name)
 
-        # Compute RRT and OSI based on mean and absolute WSS
-        RRT.vector().set_local(1 / wss_mean_vec)
-        RRT.vector().apply("insert")
-        RRT.rename("RRT", "RRT")
+    # Write indices to file
+    for name, xdmf_object in indices.items():
+        index = index_dict[name]
+        if name == "WSS":
+            pass
+        else:
+            indices[name].write_checkpoint(index, name, 0, XDMFFile.Encoding.HDF5, append=False)
+            indices[name].close()
+            if MPI.rank(MPI.comm_world) == 0:
+                print(f"--- {name} is saved in {hemodynamic_indices_path}")
 
-        OSI.vector().set_local(0.5 * (1 - wss_mean_vec / wss_abs_vec))
-        OSI.vector().apply("insert")
-        OSI.rename("OSI", "OSI")
-        save = True
-    except:
-        if MPI.rank(MPI.comm_world) == 0:
-            print("Failed to compute OSI and RRT")
-        save = False
+    file_u.close()
 
-    if save:
-        # Save OSI and RRT
-        rrt_path = (visualization_separate_domain_path / "RRT.xdmf").__str__()
-        osi_path = (visualization_separate_domain_path / "OSI.xdmf").__str__()
-
-        rrt = XDMFFile(MPI.comm_world, rrt_path)
-        osi = XDMFFile(MPI.comm_world, osi_path)
-
-        for f in [rrt, osi]:
-            f.parameters["flush_output"] = True
-            f.parameters["functions_share_mesh"] = True
-            f.parameters["rewrite_function_mesh"] = False
-
-        rrt.write_checkpoint(RRT, "RRT", 0)
-        osi.write_checkpoint(OSI, "OSI", 0)
-
-    # Save WSS and TWSSG
-    wss_path = (visualization_separate_domain_path / "WSS.xdmf").__str__()
-    twssg_path = (visualization_separate_domain_path / "TWSSG.xdmf").__str__()
-
-    wss = XDMFFile(MPI.comm_world, wss_path)
-    twssg = XDMFFile(MPI.comm_world, twssg_path)
-
-    for f in [wss, twssg]:
-        f.parameters["flush_output"] = True
-        f.parameters["functions_share_mesh"] = True
-        f.parameters["rewrite_function_mesh"] = False
-
-    wss.write_checkpoint(WSS_abs, "WSS_abs", 0)
-    twssg.write_checkpoint(TWSSG, "TWWSSG", 0)
+        
 
 
 if __name__ == '__main__':
@@ -314,7 +278,14 @@ if __name__ == '__main__':
 
     parameters = read_parameters_from_file(args.folder)
     save_deg = parameters["save_deg"]
-    assert save_deg == 1, "This script only works for save_deg = 2"
+    assert save_deg == 2, "This script only works for save_deg = 2"
+
+    mu_f = parameters["mu_f"]
+
+    if isinstance(mu_f, list):
+        if MPI.rank(MPI.comm_world) == 0:
+            print("--- two fluid regions are detected. Using the first fluid region for viscosity \n")
+        mu = mu_f[0]
 
     if args.mesh_path:
         mesh_path = Path(args.mesh_path)
@@ -327,5 +298,5 @@ if __name__ == '__main__':
             print("--- Using mesh from default turrtleFSI Mesh folder \n")
         assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
 
-    compute_hemodyanamics(visualization_separate_domain_folder, args.mesh_path, nu)
+    compute_hemodyanamics(visualization_separate_domain_folder, mesh_path, mu, args.stride)
 
