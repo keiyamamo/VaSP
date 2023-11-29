@@ -1,19 +1,19 @@
 # Copyright (c) 2023 Simula Research Laboratory
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Contributions:
-#  Kei Yamamoto
+#  Kei Yamamoto 2023
 
 """
 This script computes hemodynamic indices from the velocity field.
-It is assumed that the user has already run create_hdf5.py to create the hdf5 files 
+It is assumed that the user has already run create_hdf5.py to create the hdf5 files
 and obtained u.h5 in the Visualization_separate_domain folder.
 """
 
 from pathlib import Path
 import argparse
 
-from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, TestFunction, \
-    inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, VectorElement, PETScDMCollection, grad, sym, solve
+from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, \
+    TestFunction, inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, PETScDMCollection, grad, solve
 from vampy.automatedPostprocessing.postprocessing_common import get_dataset_names
 from fsipy.automatedPostprocessing.postprocessing_common import read_parameters_from_file
 from fsipy.automatedPostprocessing.postprocessing_fenics.postprocessing_fenics_common import project_dg
@@ -29,22 +29,22 @@ def parse_arguments():
 
     parser.add_argument('--folder', type=Path, help="Path to simulation results folder")
     parser.add_argument('--mesh-path', type=Path, default=None,
-                        help="Path to the mesh file. If not given (None), it will assume that mesh is located <folder_path>/Mesh/mesh.h5)")
+                        help="Path to the mesh file. If not given (None)," +
+                             "it will assume that mesh is located <folder_path>/Mesh/mesh.h5)")
     parser.add_argument("--stride", type=int, default=1, help="Save frequency of output data")
     args = parser.parse_args()
 
     return args
 
 
-#TODO: optimize the function
 def _surface_project(f, V):
     """
     Project a function contains surface integral onto a function space V
     """
     u = TrialFunction(V)
     v = TestFunction(V)
-    a_proj = inner(u, v)*ds
-    b_proj = inner(f, v)*ds
+    a_proj = inner(u, v) * ds
+    b_proj = inner(f, v) * ds
     # keep_diagonal=True & ident_zeros() are necessary for the matrix to be invertible
     A = assemble(a_proj, keep_diagonal=True)
     A.ident_zeros()
@@ -56,7 +56,7 @@ def _surface_project(f, V):
 
 class Stress:
     def __init__(self, u, mu, mesh, velocity_degree):
-        self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree -1)
+        self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree - 1)
 
         # Compute stress tensor
         sigma = (2 * mu * sym(grad(u)))
@@ -79,21 +79,17 @@ class Stress:
         self.Ftv = _surface_project(self.Ft, self.V)
 
         return self.Ftv
-    
 
 
 def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, stride=1):
 
     """
     Args:
-        mesh_name: Name of the input mesh for the simulation. This function will find the fluid only mesh based on this name
-        case_path (Path): Path to results from simulation
-        nu (float): Viscosity
-        dt (float): Actual ime step of simulation
-        stride: reduce the output data frequency by this factor, relative to input data (v.h5/d.h5 in this script)
-        save_deg (int): element degree saved from P2-P1 simulation (save_deg = 1 is corner nodes only)
+        visualization_separate_domain_path (Path): Path to the folder containing u.h5
+        mesh_path (Path): Path to the mesh folder
+        mu (float): Dynamic viscosity
+        stride (int): reduce the output data frequency by this factor, relative to input data (v.h5/d.h5 in this script)
     """
-    
 
     file_path_u = visualization_separate_domain_folder / "u.h5"
     assert file_path_u.exists(), f"Velocity file {file_path_u} not found.  Make sure to run create_hdf5.py first."
@@ -101,7 +97,7 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
 
     with HDF5File(MPI.comm_world, str(file_path_u), "r") as f:
         dataset = get_dataset_names(f, step=stride, vector_filename="/velocity/vector_%d")
-    
+
     # Read the original mesh and also the refined mesh
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Read the original mesh and also the refined mesh \n")
@@ -113,10 +109,10 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
 
     refined_mesh_path = mesh_path / "mesh_refined_fluid.h5"
     refined_mesh = Mesh()
-    with HDF5File(MPI.comm_world,  str(refined_mesh_path), "r") as mesh_file:
+    with HDF5File(MPI.comm_world, str(refined_mesh_path), "r") as mesh_file:
         mesh_file.read(refined_mesh, "mesh", False)
 
-   # Define functionspaces and functions
+    # Define functionspaces and functions
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Define function spaces \n")
 
@@ -144,8 +140,8 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
 
     # Time-dependent wall shear stress
     WSS = Function(Vv)
-    
-    # Relative residence time 
+
+    # Relative residence time
     RRT = Function(V)
 
     # Oscillatory shear index
@@ -210,20 +206,21 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
 
         # Simply accumulate WSS for computing OSI and ECAP later
         WSS_mean.vector().axpy(1, tau.vector())
-    
+
         # Compute TWSSG
         twssg.vector().set_local((tau.vector().get_local() - tau_prev.vector().get_local()) / dt)
         twssg.vector().apply("insert")
-        twssg_ = project_dg(inner(twssg, twssg) ** (1 / 2) , V)
+        twssg_ = project_dg(inner(twssg, twssg) ** (1 / 2), V)
         TWSSG.vector().axpy(1, twssg_.vector())
-    
-        # Update tau    
+
+        # Update tau
         tau_prev.vector().zero()
         tau_prev.vector().axpy(1, tau.vector())
 
         counter += 1
-    
+
     indices["WSS"].close()
+    file_u.close()
 
     if MPI.rank(MPI.comm_world) == 0:
         print("=" * 10, "Saving hemodynamic indices", "=" * 10)
@@ -234,7 +231,7 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     wss_mean = project(inner(WSS_mean, WSS_mean) ** (1 / 2), V)
     wss_mean_vec = wss_mean.vector().get_local()
     tawss_vec = index_dict['TAWSS'].vector().get_local()
-    from IPython import embed; embed(); exit(1)
+
     # Compute RRT, OSI, and ECAP based on mean and absolute WSS
     index_dict['RRT'].vector().set_local(1 / wss_mean_vec)
     index_dict['OSI'].vector().set_local(0.5 * (1 - wss_mean_vec / tawss_vec))
@@ -258,10 +255,6 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
             if MPI.rank(MPI.comm_world) == 0:
                 print(f"--- {name} is saved in {hemodynamic_indices_path}")
 
-    file_u.close()
-
-        
-
 
 if __name__ == '__main__':
 
@@ -274,7 +267,7 @@ if __name__ == '__main__':
     assert folder_path.exists(), f"Folder {folder_path} not found."
     visualization_separate_domain_folder = folder_path / "Visualization_separate_domain"
     assert visualization_separate_domain_folder.exists(), f"Folder {visualization_separate_domain_folder} not found. " \
-                                                            "Please make sure to run create_hdf5.py first."
+        "Please make sure to run create_hdf5.py first."
 
     parameters = read_parameters_from_file(args.folder)
     save_deg = parameters["save_deg"]
@@ -299,4 +292,3 @@ if __name__ == '__main__':
         assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
 
     compute_hemodyanamics(visualization_separate_domain_folder, mesh_path, mu, args.stride)
-
