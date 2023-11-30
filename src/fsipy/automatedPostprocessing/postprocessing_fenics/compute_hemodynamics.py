@@ -54,7 +54,7 @@ def _surface_project(f, V):
     solve(A, u_.vector(), b)
     return u_
 
-
+# NOTE: There is a problem with vector function space
 def _interpolate_dg(sub_map, sub_dofmap, V1, V_sub, mesh, v_sub_copy, u_vec, sub_coords, dof_coords):
 
     mesh.init(mesh.topology().dim() - 1, mesh.topology().dim())
@@ -82,8 +82,9 @@ def _interpolate_dg(sub_map, sub_dofmap, V1, V_sub, mesh, v_sub_copy, u_vec, sub
 
 class Stress:
     def __init__(self, u, mu, mesh, boundary_mesh, velocity_degree):
-        self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree - 1)
-        self.Vb = VectorFunctionSpace(boundary_mesh, 'DG', velocity_degree - 1)
+        self.V = FunctionSpace(mesh, 'DG', velocity_degree - 1)
+        self.Vv = VectorFunctionSpace(mesh, 'DG', velocity_degree - 1)
+        self.Vb = FunctionSpace(boundary_mesh, 'DG', velocity_degree - 1)
         self.Ftv_b = Function(self.Vb)
         self.sub_map = boundary_mesh.entity_map(mesh.topology().dim() - 1).array()
         self.sub_dofmap = self.Vb.dofmap()
@@ -105,20 +106,20 @@ class Stress:
         self.Ft = F - (Fn * n)  # vector-valued
 
     def __call__(self):
-        """
+        """b
         Compute stress for given velocity field u
 
         Returns:
             Ftv_mb (Function): Shear stress
         """
-        self.Ftv = _surface_project(self.Ft, self.V)
+        self.Ftv = _surface_project(self.Ft, self.Vv)
 
-        self.v_sub_copy = _interpolate_dg(self.sub_map, self.sub_dofmap, self.V, self.Vb, self.mesh,
-                                          self.v_sub_copy, self.Ftv.vector().get_local(), self.sub_coords,
-                                          self.dof_coords)
-        self.Ftv_b.vector().set_local(self.v_sub_copy)
-
-        return self.Ftv_b
+        # self.v_sub_copy = _interpolate_dg(self.sub_map, self.sub_dofmap, self.V, self.Vb, self.mesh,
+        #                                   self.v_sub_copy, self.Ftv.vector().get_local(), self.sub_coords,
+        #                                   self.dof_coords)
+        # self.Ftv_b.vector().set_local(self.v_sub_copy)
+        return self.Ftv
+        # return self.Ftv_b
 
 
 def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, stride=1):
@@ -167,6 +168,7 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     # Create function space for hemodynamic indices with DG1 elements
     Vv_boundary_mesh = VectorFunctionSpace(boundary_mesh, "DG", 1)
     V_boundary_mesh = FunctionSpace(boundary_mesh, "DG", 1)
+    V = FunctionSpace(mesh, "DG", 1)
 
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Define functions")
@@ -241,20 +243,23 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
 
         # Write temporal WSS
         tau.rename("WSS", "WSS")
-        indices["WSS"].write_checkpoint(tau, "WSS", t, XDMFFile.Encoding.HDF5, append=True)
-
+        # indices["WSS"].write_checkpoint(tau, "WSS", t, XDMFFile.Encoding.HDF5, append=True)
+        tau_mag = project(inner(tau, tau) ** (1 / 2), V)
+        tau = _interpolate_dg(stress.sub_map, stress.sub_dofmap, stress.V, Vv_boundary_mesh, stress.mesh,
+                                  stress.v_sub_copy, tau_mag.vector().get_local(), stress.sub_coords,
+                                  stress.dof_coords)
         # Compute time-averaged WSS by accumulating WSS magnitude
-        tawss = project(inner(tau, tau) ** (1 / 2), V_boundary_mesh)
-        TAWSS.vector().axpy(1, tawss.vector())
+        # tawss = project(inner(tau, tau) ** (1 / 2), V_boundary_mesh)
+        TAWSS.vector().axpy(1, tau)
 
         # Simply accumulate WSS for computing OSI and ECAP later
         WSS_mean.vector().axpy(1, tau.vector())
 
         # Compute TWSSG
-        twssg.vector().set_local((tau.vector().get_local() - tau_prev.vector().get_local()) / dt)
-        twssg.vector().apply("insert")
-        twssg_ = project_dg(inner(twssg, twssg) ** (1 / 2), V_boundary_mesh)
-        TWSSG.vector().axpy(1, twssg_.vector())
+        # twssg.vector().set_local((tau.vector().get_local() - tau_prev.vector().get_local()) / dt)
+        # twssg.vector().apply("insert")
+        # twssg_ = project_dg(inner(twssg, twssg) ** (1 / 2), V_boundary_mesh)
+        # TWSSG.vector().axpy(1, twssg_.vector())
 
         # Update tau
         tau_prev.vector().zero()
