@@ -8,12 +8,13 @@ This script computes hemodynamic indices from the velocity field.
 It is assumed that the user has already run create_hdf5.py to create the hdf5 files
 and obtained u.h5 in the Visualization_separate_domain folder.
 """
-
+import numpy as np
 from pathlib import Path
 import argparse
 
 from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, \
-    TestFunction, inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, PETScDMCollection, grad, solve
+    TestFunction, inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, PETScDMCollection, grad, solve, \
+    BoundaryMesh
 from vampy.automatedPostprocessing.postprocessing_common import get_dataset_names
 from fsipy.automatedPostprocessing.postprocessing_common import read_parameters_from_file
 from fsipy.automatedPostprocessing.postprocessing_fenics.postprocessing_fenics_common import project_dg
@@ -49,14 +50,48 @@ def _surface_project(f, V):
     A = assemble(a_proj, keep_diagonal=True)
     A.ident_zeros()
     b = assemble(b_proj)
-    u = Function(V)
-    solve(A, u.vector(), b)
-    return u
+    u_ = Function(V)
+    solve(A, u_.vector(), b)
+    return u_
+
+
+def _interpolate_dg(sub_map, sub_dofmap, V1, V_sub, mesh, v_sub_copy, u_vec, sub_coords, dof_coords):
+
+    mesh.init(mesh.topology().dim() - 1, mesh.topology().dim())
+    f_to_c = mesh.topology()(mesh.topology().dim() - 1, mesh.topology().dim())
+    for i, facet in enumerate(sub_map):
+        cells = f_to_c(facet)
+        # Get closure dofs on parent facet
+
+        sub_dofs = sub_dofmap.cell_dofs(i)
+        closure_dofs = V1.dofmap().entity_closure_dofs(
+            mesh, mesh.topology().dim(), [cells[0]])
+        copy_dofs = np.empty(len(sub_dofs), dtype=np.int32)
+
+        for dof in closure_dofs:
+            for j, sub_coord in enumerate(sub_coords[sub_dofs]):
+                if np.allclose(dof_coords[dof], sub_coord):
+                    copy_dofs[j] = dof
+                    break
+        sub_dofs = sub_dofmap.cell_dofs(i)
+        # Copy data
+        v_sub_copy[sub_dofs] = u_vec[copy_dofs]
+
+    return v_sub_copy
 
 
 class Stress:
-    def __init__(self, u, mu, mesh, velocity_degree):
+    def __init__(self, u, mu, mesh, boundary_mesh, velocity_degree):
         self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree - 1)
+        self.Vb = VectorFunctionSpace(boundary_mesh, 'DG', velocity_degree - 1)
+        self.Ftv_b = Function(self.Vb)
+        self.sub_map = boundary_mesh.entity_map(mesh.topology().dim() - 1).array()
+        self.sub_dofmap = self.Vb.dofmap()
+        self.mesh = mesh
+        v_sub = Function(self.Vb)
+        self.v_sub_copy = v_sub.vector().get_local()
+        self.sub_coords = self.Vb.tabulate_dof_coordinates()
+        self.dof_coords = self.V.tabulate_dof_coordinates()
 
         # Compute stress tensor
         sigma = (2 * mu * sym(grad(u)))
@@ -78,7 +113,12 @@ class Stress:
         """
         self.Ftv = _surface_project(self.Ft, self.V)
 
-        return self.Ftv
+        self.v_sub_copy = _interpolate_dg(self.sub_map, self.sub_dofmap, self.V, self.Vb, self.mesh,
+                                          self.v_sub_copy, self.Ftv.vector().get_local(), self.sub_coords,
+                                          self.dof_coords)
+        self.Ftv_b.vector().set_local(self.v_sub_copy)
+
+        return self.Ftv_b
 
 
 def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, stride=1):
@@ -121,9 +161,12 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     # Create function space for the velocity on the refined mesh with P2 elements
     Vv_non_refined = VectorFunctionSpace(mesh, "CG", 2)
 
+    # Create boundary mesh and function space
+    boundary_mesh = BoundaryMesh(mesh, "exterior")
+
     # Create function space for hemodynamic indices with DG1 elements
-    Vv = VectorFunctionSpace(mesh, "DG", 1)
-    V = FunctionSpace(mesh, "DG", 1)
+    Vv_boundary_mesh = VectorFunctionSpace(boundary_mesh, "DG", 1)
+    V_boundary_mesh = FunctionSpace(boundary_mesh, "DG", 1)
 
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Define functions")
@@ -139,28 +182,28 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     u_transfer_matrix = PETScDMCollection.create_transfer_matrix(Vv_refined, Vv_non_refined)
 
     # Time-dependent wall shear stress
-    WSS = Function(Vv)
+    WSS = Function(Vv_boundary_mesh)
 
     # Relative residence time
-    RRT = Function(V)
+    RRT = Function(V_boundary_mesh)
 
     # Oscillatory shear index
-    OSI = Function(V)
+    OSI = Function(V_boundary_mesh)
 
     # Endothelial cell activation potential
-    ECAP = Function(V)
+    ECAP = Function(V_boundary_mesh)
 
     # Time averaged wall shear stress and mean WSS magnitude
-    TAWSS = Function(V)
-    WSS_mean = Function(Vv)
+    TAWSS = Function(V_boundary_mesh)
+    WSS_mean = Function(Vv_boundary_mesh)
 
     # Temporal wall shear stress gradient
-    TWSSG = Function(V)
-    twssg = Function(Vv)
-    tau_prev = Function(Vv)
+    TWSSG = Function(V_boundary_mesh)
+    twssg = Function(Vv_boundary_mesh)
+    tau_prev = Function(Vv_boundary_mesh)
 
     # Define stress object with P2 elements and non-refined mesh
-    stress = Stress(u_p2, mu, mesh, 2)
+    stress = Stress(u_p2, mu, mesh, boundary_mesh, 2)
 
     # Create XDMF files for saving indices
     hemodynamic_indices_path = visualization_separate_domain_path.parent / "Hemodynamic_indices"
@@ -201,7 +244,7 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
         indices["WSS"].write_checkpoint(tau, "WSS", t, XDMFFile.Encoding.HDF5, append=True)
 
         # Compute time-averaged WSS by accumulating WSS magnitude
-        tawss = project(inner(tau, tau) ** (1 / 2), V)
+        tawss = project(inner(tau, tau) ** (1 / 2), V_boundary_mesh)
         TAWSS.vector().axpy(1, tawss.vector())
 
         # Simply accumulate WSS for computing OSI and ECAP later
@@ -210,7 +253,7 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
         # Compute TWSSG
         twssg.vector().set_local((tau.vector().get_local() - tau_prev.vector().get_local()) / dt)
         twssg.vector().apply("insert")
-        twssg_ = project_dg(inner(twssg, twssg) ** (1 / 2), V)
+        twssg_ = project_dg(inner(twssg, twssg) ** (1 / 2), V_boundary_mesh)
         TWSSG.vector().axpy(1, twssg_.vector())
 
         # Update tau
@@ -228,7 +271,7 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     index_dict['TWSSG'].vector()[:] = index_dict['TWSSG'].vector()[:] / counter
     index_dict['TAWSS'].vector()[:] = index_dict['TAWSS'].vector()[:] / counter
     WSS_mean.vector()[:] = WSS_mean.vector()[:] / counter
-    wss_mean = project(inner(WSS_mean, WSS_mean) ** (1 / 2), V)
+    wss_mean = project(inner(WSS_mean, WSS_mean) ** (1 / 2), V_boundary_mesh)
     wss_mean_vec = wss_mean.vector().get_local()
     tawss_vec = index_dict['TAWSS'].vector().get_local()
 
