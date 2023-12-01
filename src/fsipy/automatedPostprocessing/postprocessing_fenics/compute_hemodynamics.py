@@ -8,18 +8,19 @@ This script computes hemodynamic indices from the velocity field.
 It is assumed that the user has already run create_hdf5.py to create the hdf5 files
 and obtained u.h5 in the Visualization_separate_domain folder.
 """
+
 import numpy as np
 from pathlib import Path
 import argparse
 
 from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile, TrialFunction, \
-    TestFunction, inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, PETScDMCollection, grad, solve
+    TestFunction, inner, ds, assemble, FacetNormal, sym, project, FunctionSpace, PETScDMCollection, grad, \
+    LUSolver
 from vampy.automatedPostprocessing.postprocessing_common import get_dataset_names
 from fsipy.automatedPostprocessing.postprocessing_common import read_parameters_from_file
 from fsipy.automatedPostprocessing.postprocessing_fenics.postprocessing_fenics_common import project_dg
 
 # set compiler arguments
-parameters["form_compiler"]["quadrature_degree"] = 6
 parameters["reorder_dofs_serial"] = False
 
 
@@ -37,28 +38,54 @@ def parse_arguments():
     return args
 
 
-def _surface_project(f, V):
+class SurfaceProject:
     """
     Project a function contains surface integral onto a function space V
     """
-    u = TrialFunction(V)
-    v = TestFunction(V)
-    a_proj = inner(u, v) * ds
-    b_proj = inner(f, v) * ds
-    # keep_diagonal=True & ident_zeros() are necessary for the matrix to be invertible
-    A = assemble(a_proj, keep_diagonal=True)
-    A.ident_zeros()
-    b = assemble(b_proj)
-    u = Function(V)
-    solve(A, u.vector(), b)
-    return u
+    def __init__(self, V):
+        """
+        Initialize the surface projector
+
+        Args:
+            V (FunctionSpace): function space to project onto
+        """
+        u = TrialFunction(V)
+        v = TestFunction(V)
+        a_proj = inner(u, v) * ds
+        # keep_diagonal=True & ident_zeros() are necessary for the matrix to be invertible
+        self.A = assemble(a_proj, keep_diagonal=True)
+        self.A.ident_zeros()
+        self.u_ = Function(V)
+        self.solver = LUSolver(self.A)
+
+    def __call__(self, f):
+        v = TestFunction(self.u_.function_space())
+        self.b_proj = inner(f, v) * ds
+        self.b = assemble(self.b_proj)
+        self.solver.solve(self.u_.vector(), self.b)
+        return self.u_
 
 
 class Stress:
+    """
+    A class to compute wall shear stress from velocity field
+    Here, we use cauchy stress tensor to compute WSS. Typically, cauchy stress tensor is defined as
+    sigam = mu * (grad(u) + grad(u).T) + p * I but one can prove that the pressure term does not contribute to WSS.
+    This is consitent with the other definition, tau = mu * grad(u) * n, which also does not contain pressure term.
+    """
     def __init__(self, u, mu, mesh, velocity_degree):
-        self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree - 1)
+        """
+        Initialize the stress object
 
-        # Compute stress tensor
+        Args:
+            u (Function): velocity field
+            mu (float): dynamic viscosity
+            mesh (Mesh): mesh
+            velocity_degree (int): degree of velocity field
+        """
+        self.V = VectorFunctionSpace(mesh, 'DG', velocity_degree - 1)
+        self.projector = SurfaceProject(self.V)
+
         sigma = (2 * mu * sym(grad(u)))
 
         # Compute stress on surface
@@ -70,25 +97,24 @@ class Stress:
         self.Ft = F - (Fn * n)  # vector-valued
 
     def __call__(self):
-        """
-        Compute stress for given velocity field u
-
-        Returns:
-            Ftv_mb (Function): Shear stress
-        """
-        self.Ftv = _surface_project(self.Ft, self.V)
+        """compute stress for given velocity field u"""
+        self.Ftv = self.projector(self.Ft)
 
         return self.Ftv
 
 
-def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, stride=1):
-
+def compute_hemodyanamics(visualization_separate_domain_path: Path, mesh_path: Path,
+                          mu: float, stride: int = 1) -> None:
     """
+    Compute hemodynamic indices from velocity field
+    Definition of hemodynamic indices can be found in:
+        https://kvslab.github.io/VaMPy/quantities.html
+
     Args:
         visualization_separate_domain_path (Path): Path to the folder containing u.h5
         mesh_path (Path): Path to the mesh folder
         mu (float): Dynamic viscosity
-        stride (int): reduce the output data frequency by this factor, relative to input data (v.h5/d.h5 in this script)
+        stride (int): Save frequency of output data
     """
 
     file_path_u = visualization_separate_domain_folder / "u.h5"
@@ -128,8 +154,6 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Define functions")
 
-    # Create functions
-
     # u_p2 is the velocity on the refined mesh with P2 elements
     u_p2 = Function(Vv_non_refined)
     # u_p1 is the velocity on the refined mesh with P1 elements
@@ -160,7 +184,7 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     tau_prev = Function(Vv)
 
     # Define stress object with P2 elements and non-refined mesh
-    stress = Stress(u_p2, mu, mesh, 2)
+    stress = Stress(u_p2, mu, mesh, velocity_degree=2)
 
     # Create XDMF files for saving indices
     hemodynamic_indices_path = visualization_separate_domain_path.parent / "Hemodynamic_indices"
@@ -233,12 +257,17 @@ def compute_hemodyanamics(visualization_separate_domain_path, mesh_path, mu, str
     tawss_vec = index_dict['TAWSS'].vector().get_local()
 
     # Compute RRT, OSI, and ECAP based on mean and absolute WSS
-    rrt_divided = np.divide(np.ones_like(wss_mean_vec), wss_mean_vec, out=np.zeros_like(wss_mean_vec), where=wss_mean_vec != 0)
+    # Note that we use np.divide because WSS is zero inside the domain and we want to avoid division by zero
+    rrt_divided = np.divide(np.ones_like(wss_mean_vec), wss_mean_vec,
+                            out=np.zeros_like(wss_mean_vec), where=wss_mean_vec != 0)
     index_dict['RRT'].vector().set_local(rrt_divided)
+
     wss_divied_by_tawss = np.divide(wss_mean_vec, tawss_vec, out=np.zeros_like(wss_mean_vec), where=tawss_vec != 0)
     osi = 0.5 * (1 - wss_divied_by_tawss)
     index_dict['OSI'].vector().set_local(osi)
-    ecap = np.divide(index_dict['OSI'].vector().get_local(), tawss_vec, out=np.zeros_like(wss_mean_vec), where=tawss_vec != 0)
+
+    ecap = np.divide(index_dict['OSI'].vector().get_local(), tawss_vec,
+                     out=np.zeros_like(wss_mean_vec), where=tawss_vec != 0)
     index_dict['ECAP'].vector().set_local(ecap)
 
     for index in ['RRT', 'OSI', 'ECAP']:
