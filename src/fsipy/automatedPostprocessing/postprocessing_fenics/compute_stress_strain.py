@@ -100,16 +100,16 @@ def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, 
     with HDF5File(MPI.comm_world, str(solid_mesh_path), "r") as mesh_file:
         mesh_file.read(mesh, "/mesh", False)
         domains = MeshFunction("size_t", mesh, mesh.topology().dim())
-        
+
         if solid_only and len(solid_properties) == 1:
             domains.set_all(solid_properties[0]["dx_s_id"])
         elif solid_only and len(solid_properties) > 1:
             mesh_file.read(domains, "/mesh")
         else:
             mesh_file.read(domains, "/domains")
-    
+
     refined_mesh_path = mesh_path.parent / f"{mesh_name}_refined_solid.h5" if solid_only else \
-                        mesh_path.parent / f"{mesh_name}_refined.h5"
+        mesh_path.parent / f"{mesh_name}_refined.h5"
     refined_mesh = Mesh()
     with HDF5File(MPI.comm_world, str(refined_mesh_path), "r") as mesh_file:
         mesh_file.read(refined_mesh, "mesh", False)
@@ -150,7 +150,7 @@ def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, 
         dx_s_id = solid_region["dx_s_id"]
         dx_s[idx] = dx(dx_s_id, subdomain_data=domains)
         dx_s_id_list.append(dx_s_id)
-    
+
     if not solid_only:
         dx_f = {}
         dx_f_id_list = []
@@ -162,7 +162,7 @@ def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, 
         dx_f = None
         dx_f_id_list = None
 
-    a = 0 
+    a = 0
     for solid_region in range(len(dx_s_id_list)):
         a += inner(u, v) * dx_s[solid_region]
 
@@ -208,7 +208,7 @@ def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, 
 
         L_sigma = 0
         L_epsilon = 0
-       
+
         for solid_region in range(len(dx_s_id_list)):
             # Form for second PK stress (using specified material model)
             PiolaKirchoff2 = common.S(d_p2, solid_properties[solid_region])
