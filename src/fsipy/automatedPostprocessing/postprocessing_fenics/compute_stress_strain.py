@@ -3,7 +3,7 @@ import argparse
 from dolfin import MPI, TensorFunctionSpace, VectorFunctionSpace, FunctionSpace, \
     Function, Mesh, HDF5File, Measure, MeshFunction, as_tensor, XDMFFile, PETScDMCollection, \
     TrialFunction, TestFunction, inner, LocalSolver, parameters
-
+from ufl.form import Form
 from turtleFSI.modules import common
 
 from vampy.automatedPostprocessing.postprocessing_common import get_dataset_names
@@ -35,40 +35,35 @@ def parse_arguments():
     return args
 
 
-def setup_stress_forms(tensorForm, fxnSpace, dx_s):
-    #
-    # This function sets up a UFL tensor equation (tensorForm) using a tensor function space (fxnSpace)
-    # on only the solid part of the mesh, given by the differential operator for the solid domain (dx_s)
-    #
-
-    v = TestFunction(fxnSpace)
-    u = TrialFunction(fxnSpace)
-    a = inner(u, v) * dx_s  # bilinear form
-    L = inner(tensorForm, v) * dx_s  # linear form
-
-    return a, L
-
-
-def solve_stress_forms(a, L, fxnSpace):
-    # Solves the stress form efficiently for a DG space
-    tensorProjected = Function(fxnSpace)  # output tensor-valued function
+def solve_dg(a: Form, L: Form, T: TensorFunctionSpace) -> Function:
+    """
+    Solves the strain/stress form efficiently for a DG space
+    Args:
+        a: Bilinear form of the variational problem
+        L: Linear form of the variational problem
+        T: TensorFunctionSpace
+    Returns:
+        t: Function
+    """
+    assert T.ufl_element().family() == "Discontinuous Lagrange", "Function space must be DG"
+    t = Function(T)
     solver = LocalSolver(a, L)
     solver.factorize()
-    solver.solve_local_rhs(tensorProjected)
+    solver.solve_local_rhs(t)
 
-    return tensorProjected
+    return t
 
 
-def compute_stress(visualization_separate_domain_folder, mesh_path, stride, solid_properties, fluid_properties):
+def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, stride: int,
+                   solid_properties: list, fluid_properties: list) -> None:
     """
     Loads displacement fields from completed FSI simulation,
     and computes and saves the following solid mechanical quantities:
     (1) True Stress
-    (2) Infinitesimal Strain
+    (2) Green-Lagrange Strain
     (3) Maximum Principal Stress (True)
-    (4) Maximum Principal Strain (Infinitesimal)
-    This script can now compute stress for subdomains with different material properties
-    and different material models (Mooney-Rivlin, for example)
+    (4) Maximum Principal Strain (Green-Lagrange
+
     Args:
         case_path (Path): Path to results from simulation
         mesh_name: Name of mesh file
@@ -99,14 +94,22 @@ def compute_stress(visualization_separate_domain_folder, mesh_path, stride, soli
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Read the original mesh and also the refined mesh \n")
 
-    solid_mesh_path = mesh_path / "mesh_solid.h5" if solid_only else mesh_path / "mesh.h5"
+    mesh_name = mesh_path.stem
+    solid_mesh_path = mesh_path.parent / f"{mesh_name}_solid.h5" if solid_only else mesh_path
     mesh = Mesh()
     with HDF5File(MPI.comm_world, str(solid_mesh_path), "r") as mesh_file:
         mesh_file.read(mesh, "/mesh", False)
         domains = MeshFunction("size_t", mesh, mesh.topology().dim())
-        mesh_file.read(domains, "/domains")
-
-    refined_mesh_path = mesh_path / "mesh_refined_solid.h5" if solid_only else mesh_path / "mesh_refined.h5"
+        
+        if solid_only and len(solid_properties) == 1:
+            domains.set_all(solid_properties[0]["dx_s_id"])
+        elif solid_only and len(solid_properties) > 1:
+            mesh_file.read(domains, "/mesh")
+        else:
+            mesh_file.read(domains, "/domains")
+    
+    refined_mesh_path = mesh_path.parent / f"{mesh_name}_refined_solid.h5" if solid_only else \
+                        mesh_path.parent / f"{mesh_name}_refined.h5"
     refined_mesh = Mesh()
     with HDF5File(MPI.comm_world, str(refined_mesh_path), "r") as mesh_file:
         mesh_file.read(refined_mesh, "mesh", False)
@@ -125,22 +128,6 @@ def compute_stress(visualization_separate_domain_folder, mesh_path, stride, soli
     # Create a transfer matrix between higher degree and lower degree (visualization) function spaces
     d_transfer_matrix = PETScDMCollection.create_transfer_matrix(Vv_refined, Vv_non_refined)
 
-    # Set up dx (dx_s for solid, dx_f for fluid) for each domain
-    dx = Measure("dx", subdomain_data=domains)
-    dx_s = {}
-    dx_s_id_list = []
-    for idx, solid_region in enumerate(solid_properties):
-        dx_s_id = solid_region["dx_s_id"]
-        dx_s[idx] = dx(dx_s_id, subdomain_data=domains)
-        dx_s_id_list.append(dx_s_id)
-
-    dx_f = {}
-    dx_f_id_list = []
-    for idx, fluid_region in enumerate(fluid_properties):
-        dx_f_id = fluid_region["dx_f_id"]
-        dx_f[idx] = dx(dx_f_id, subdomain_data=domains)
-        dx_f_id_list.append(dx_f_id)
-
     # Create function space for stress and strain
     VT = TensorFunctionSpace(mesh, "DG", 1)
     V = FunctionSpace(mesh, "DG", 1)
@@ -151,8 +138,41 @@ def compute_stress(visualization_separate_domain_folder, mesh_path, stride, soli
     MPStress = Function(V)
     MPStrain = Function(V)
 
-    # NOTE: I guess sig is sigma and ep is epsilon, sig_P is sigma principal and ep_P is epsilon principal
-    # Create XDMF files for saving indices
+    v = TestFunction(VT)
+    u = TrialFunction(VT)
+
+    # Set up dx (dx_s for solid, dx_f for fluid) for each domain
+    dx = Measure("dx", subdomain_data=domains)
+    dx_s = {}
+    dx_s_id_list = []
+    a = 0
+    for idx, solid_region in enumerate(solid_properties):
+        dx_s_id = solid_region["dx_s_id"]
+        dx_s[idx] = dx(dx_s_id, subdomain_data=domains)
+        dx_s_id_list.append(dx_s_id)
+    
+    if not solid_only:
+        dx_f = {}
+        dx_f_id_list = []
+        for idx, fluid_region in enumerate(fluid_properties):
+            dx_f_id = fluid_region["dx_f_id"]
+            dx_f[idx] = dx(dx_f_id, subdomain_data=domains)
+            dx_f_id_list.append(dx_f_id)
+    else:
+        dx_f = None
+        dx_f_id_list = None
+
+    a = 0 
+    for solid_region in range(len(dx_s_id_list)):
+        a += inner(u, v) * dx_s[solid_region]
+
+    if not solid_only and isinstance(dx_f_id_list, list) and isinstance(dx_f, dict):
+        for fluid_region in range(len(dx_f_id_list)):
+            a += inner(u, v) * dx_f[fluid_region]
+    else:
+        pass
+
+    # Create XDMF files for saving stress and strain
     stress_strain_path = visualization_separate_domain_folder.parent / "StressStrain"
     stress_strain_path.mkdir(parents=True, exist_ok=True)
     stress_strain_names = ["TrueStress", "Green-Lagrange-strain", "MaxPrincipalStress", "MaxPrincipalStrain"]
@@ -184,70 +204,64 @@ def compute_stress(visualization_separate_domain_folder, mesh_path, stride, soli
         deformationF = common.F_(d_p2)
 
         # Compute Green-Lagrange strain tensor
-        epsilon = common.E(d_p2)
+        green_lagrance_strain = common.E(d_p2)
 
-        # TODO: I think intializing those variables here is not necessary or redundant
-        a = 0
-        L_sig = 0
-        L_ep = 0
-        v = TestFunction(VT)
-        u = TrialFunction(VT)
-
+        L_sigma = 0
+        L_epsilon = 0
+       
         for solid_region in range(len(dx_s_id_list)):
             # Form for second PK stress (using specified material model)
             PiolaKirchoff2 = common.S(d_p2, solid_properties[solid_region])
             # Form for Cauchy (true) stress
-            sigma = (1 / common.J_(d_p2)) * deformationF * PiolaKirchoff2 * deformationF.T
+            cauchy_stress = (1 / common.J_(d_p2)) * deformationF * PiolaKirchoff2 * deformationF.T
+            L_sigma += inner(cauchy_stress, v) * dx_s[solid_region]
+            L_epsilon += inner(green_lagrance_strain, v) * dx_s[solid_region]
 
-            a += inner(u, v) * dx_s[solid_region]
-            # a_scal+=inner(u_scal,v_scal)*dx_s[solid_region]
-            L_sig += inner(sigma, v) * dx_s[solid_region]
-            L_ep += inner(epsilon, v) * dx_s[solid_region]
+        # Here, we add almost zero values to the fluid regions if displacement is for the entire domain
+        if not solid_only and isinstance(dx_f_id_list, list) and isinstance(dx_f, dict):
+            for fluid_region in range(len(dx_f_id_list)):
+                nought_value = 1e-10
+                sigma_nought = as_tensor(
+                    [
+                        [nought_value, nought_value, nought_value],
+                        [nought_value, nought_value, nought_value],
+                        [nought_value, nought_value, nought_value],
+                    ]
+                )
 
-        # Here, we add almost zero values to the fluid regions
-        for fluid_region in range(len(dx_f_id_list)):
-            nought_value = 1e-10
-            sigma_nought = as_tensor(
-                [
-                    [nought_value, nought_value, nought_value],
-                    [nought_value, nought_value, nought_value],
-                    [nought_value, nought_value, nought_value],
-                ]
-            )
+                epsilon_nought = as_tensor(
+                    [
+                        [nought_value, nought_value, nought_value],
+                        [nought_value, nought_value, nought_value],
+                        [nought_value, nought_value, nought_value],
+                    ]
+                )
 
-            epsilon_nought = as_tensor(
-                [
-                    [nought_value, nought_value, nought_value],
-                    [nought_value, nought_value, nought_value],
-                    [nought_value, nought_value, nought_value],
-                ]
-            )
-            a += inner(u, v) * dx_f[fluid_region]
-
-            L_sig += inner(sigma_nought, v) * dx_f[fluid_region]
-            L_ep += inner(epsilon_nought, v) * dx_f[fluid_region]
+                L_sigma += inner(sigma_nought, v) * dx_f[fluid_region]
+                L_epsilon += inner(epsilon_nought, v) * dx_f[fluid_region]
 
         # Calculate stress and strain
-        sig = solve_stress_forms(a, L_sig, VT)
-        ep = solve_stress_forms(a, L_ep, VT)
+        sigma = solve_dg(a, L_sigma, VT)
+        epsilon = solve_dg(a, L_epsilon, VT)
 
-        # Calculate principal stress and strain
-        eigStrain11, _, _ = common.get_eig(ep)
-        eigStress11, _, _ = common.get_eig(sig)
-
-        ep_P = project_dg(eigStrain11, V)  # Project onto whole domain
-        sig_P = project_dg(eigStress11, V)  # Project onto whole domain
+        # Calculate principal stress
+        stress_eigen_value11, _, _ = common.get_eig(sigma)
+        strain_eigen_value11, _, _ = common.get_eig(epsilon)
+        # Project to DG space
+        max_principal_stress = project_dg(stress_eigen_value11, V)
+        max_principal_strain = project_dg(strain_eigen_value11, V)
 
         # Save stress and strain
-        TS.assign(sig)
-        GLS.assign(ep)
-        MPStress.assign(sig_P)
-        MPStrain.assign(ep_P)
+        TS.assign(sigma)
+        GLS.assign(epsilon)
+        MPStress.assign(max_principal_stress)
+        MPStrain.assign(max_principal_strain)
         # Write indices to file
         for name, xdmf_object in stress_strain.items():
             variable = stress_strain_dict[name]
             xdmf_object.write_checkpoint(variable, name, t, XDMFFile.Encoding.HDF5, append=True)
             xdmf_object.close()
+
         counter += 1
 
 
@@ -274,7 +288,7 @@ def main() -> None:
             print("--- Using user-defined mesh \n")
         assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
     else:
-        mesh_path = folder_path / "Mesh"
+        mesh_path = folder_path / "Mesh" / "mesh.h5"
         if MPI.rank(MPI.comm_world) == 0:
             print("--- Using mesh from default turrtleFSI Mesh folder \n")
         assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
