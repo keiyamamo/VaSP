@@ -53,21 +53,22 @@ def solve_dg(a: Form, L: Form, T: TensorFunctionSpace) -> Function:
 def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, stride: int,
                    solid_properties: list, fluid_properties: list) -> None:
     """
-    Loads displacement fields from completed FSI simulation,
-    and computes and saves the following solid mechanical quantities:
-    (1) True Stress
-    (2) Green-Lagrange Strain
-    (3) Maximum Principal Stress (True)
-    (4) Maximum Principal Strain (Green-Lagrange
+    Loads displacement fields from completed FSI simulation, computes and saves
+    the following solid mechanical quantities:
+
+    (1) True (Cauchy) Stress -- tensor
+    (2) Green-Lagrange Strain -- tensor
+    (3) Maximum Principal Stress (Cauchy/True) -- scalar
+    (4) Maximum Principal Strain (Green-Lagrange) -- scalar
 
     Args:
-        case_path (Path): Path to results from simulation
-        mesh_name: Name of mesh file
-        dt (float): Actual ime step of simulation
-        stride: reduce the output data frequency by this factor, relative to input data (v.h5/d.h5 in this script)
-        save_deg (int): element degree saved from P2-P1 simulation (save_deg = 1 is corner nodes only)
-
+        visualization_separate_domain_folder (Path): Path to the folder containing d.h5 (or d_solid.h5) file
+        mesh_path (Path): Path to the mesh file (non-refined, whole domain)
+        stride (int): Save frequency of output data
+        solid_properties (list): List of dictionaries containing solid properties used in the simulation
+        fluid_properties (list): List of dictionaries containing fluid properties used in the simulation
     """
+    # find the displacement file and check if it is for the entire domain or only for the solid domain
     try:
         file_path_d = visualization_separate_domain_folder / "d_solid.h5"
         assert file_path_d.exists(), f"Displacement file {file_path_d} not found."
@@ -128,12 +129,12 @@ def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, 
     VT = TensorFunctionSpace(mesh, "DG", 1)
     V = FunctionSpace(mesh, "DG", 1)
 
-    # Create function space for stress and strain
+    # Create functions for stress and strain
     TS = Function(VT)
     GLS = Function(VT)
     MPStress = Function(V)
     MPStrain = Function(V)
-
+    # Create test and trial functions
     v = TestFunction(VT)
     u = TrialFunction(VT)
 
@@ -208,7 +209,7 @@ def compute_stress(visualization_separate_domain_folder: Path, mesh_path: Path, 
         for solid_region in range(len(dx_s_id_list)):
             # Form for second PK stress (using specified material model)
             PiolaKirchoff2 = common.S(d_p2, solid_properties[solid_region])
-            # Form for Cauchy (true) stress
+            # Form for True (Cauchy) stress
             cauchy_stress = (1 / common.J_(d_p2)) * deformationF * PiolaKirchoff2 * deformationF.T
             L_sigma += inner(cauchy_stress, v) * dx_s[solid_region]
             L_epsilon += inner(green_lagrance_strain, v) * dx_s[solid_region]
