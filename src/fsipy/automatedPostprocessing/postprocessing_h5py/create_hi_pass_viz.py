@@ -90,7 +90,8 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
     elif quantity == "mps":
         viz_type = "MaxPrincipalStrain"
     elif quantity == "strain":
-        viz_type = "InfinitesimalStrain"  # Change?
+        viz_type = "Green-Lagrange-Strain"  # Change?
+        # viz_type = "InfinitesimalStrain"  # Change?
     else:
         raise ValueError("Input 'd', 'v', 'p', 'mps', 'strain', or 'wss' for quantity")
 
@@ -307,7 +308,8 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
             logging.info("--- Saving MPS amplitude to file...")
 
             # Save MPS amplitude to file
-            viz_type = viz_type.replace("InfinitesimalStrain", "MaxPrincipalHiPassStrain")
+            # viz_type = viz_type.replace("InfinitesimalStrain", "MaxPrincipalHiPassStrain")
+            viz_type = viz_type.replace("Green-Lagrange-Strain", "MaxPrincipalHiPassStrain")
             output_path = Path(output_folder) / f"{viz_type}.h5"
 
             # Remove old file path
@@ -462,6 +464,7 @@ def main():
 
     # Visualization folder for separate domains
     visualization_separate_domain_folder = folder / "Visualization_separate_domain"
+    stres_strain_folder = folder / "StressStrain"
 
     # Visualization folder for high-pass filtered results
     visualization_hi_pass_folder = folder / "Visualization_hi_pass"
@@ -487,7 +490,7 @@ def main():
                                       mesh_path_fluid, case_name, start_time, end_time, quantity,
                                       fluid_domain_id, solid_domain_id, stride)
         elif quantity in {"mps", "strain"}:
-            create_transformed_matrix(visualization_separate_domain_folder, formatted_data_folder,
+            create_transformed_matrix(stres_strain_folder, formatted_data_folder,
                                       mesh_path_solid, case_name, start_time, end_time, quantity,
                                       fluid_domain_id, solid_domain_id, stride)
         else:

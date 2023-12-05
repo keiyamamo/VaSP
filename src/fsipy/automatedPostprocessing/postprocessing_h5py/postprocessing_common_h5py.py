@@ -200,7 +200,8 @@ def create_transformed_matrix(input_path: Union[str, Path], output_folder: Union
         'p': 'pressure.xdmf',
         'wss': 'WSS_ts.xdmf',
         'mps': 'MaxPrincipalStrain.xdmf',
-        'strain': 'InfinitesimalStrain.xdmf'
+        # 'strain': 'InfinitesimalStrain.xdmf'
+        'strain': 'Green-Lagrange-strain.xdmf'
     }
 
     if quantity in xdmf_files:
@@ -220,6 +221,7 @@ def create_transformed_matrix(input_path: Union[str, Path], output_folder: Union
     vector_data = h5py.File(first_h5_file, 'r')
 
     if quantity in {"wss", "mps", "strain"}:
+        from IPython import embed; embed(); exit(1)
         ids = np.arange(len(vector_data['VisualisationVector/0'][:]))
 
     vector_array_all = vector_data['VisualisationVector/0'][:, :]

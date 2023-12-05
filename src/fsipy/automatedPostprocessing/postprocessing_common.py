@@ -74,21 +74,48 @@ def output_file_lists(xdmf_file):
     # This loop goes through the xdmf output file and gets the time value (timevalue_list), associated
     # with .h5 file (h5file_name_list) and index of each timestep in the corresponding h5 file (index_list)
     for line in Lines:
-        if '<Time Value' in line:
-            time_pattern = '<Time Value="(.+?)"'
-            time_str = re.findall(time_pattern, line)
-            time = float(time_str[0])
-            timevalue_list.append(time)
 
-        elif 'VisualisationVector' in line:
-            h5_pattern = '"HDF">(.+?):/'
-            h5_str = re.findall(h5_pattern, line)
-            h5file_name_list.append(h5_str[0])
+        if "FiniteElementFunction" in line:
+            checkpoint_data = True
+            print("xdmf file was generated with write_checkpoint")
+            break
+        else:
+            checkpoint_data = False
 
-            index_pattern = "VisualisationVector/(.+?)</DataItem>"
-            index_str = re.findall(index_pattern, line)
-            index = int(index_str[0])
-            index_list.append(index)
+    if checkpoint_data:
+        for line in Lines:
+            if '<Time Value' in line:
+                time_pattern = '<Time Value="(.+?)"'
+                time_str = re.findall(time_pattern, line)
+                time = float(time_str[0])
+                timevalue_list.append(time)
+
+            elif 'vector' in line:
+                h5_pattern = r'"HDF">(.*?):'
+                h5_str = re.findall(h5_pattern, line)
+                h5file_name_list.append(h5_str[0])
+
+                index_pattern = r'_([0-9]+)\/vector'
+                index_str = re.findall(index_pattern, line)
+                index = int(index_str[0])
+                index_list.append(index)
+    else:
+        for line in Lines:
+            if '<Time Value' in line:
+                time_pattern = '<Time Value="(.+?)"'
+                time_str = re.findall(time_pattern, line)
+                time = float(time_str[0])
+                timevalue_list.append(time)
+
+            elif 'VisualisationVector' in line:
+                h5_pattern = '"HDF">(.+?):/'
+                h5_str = re.findall(h5_pattern, line)
+                h5file_name_list.append(h5_str[0])
+
+                index_pattern = "VisualisationVector/(.+?)</DataItem>"
+                index_str = re.findall(index_pattern, line)
+                index = int(index_str[0])
+                index_list.append(index)
 
     return h5file_name_list, timevalue_list, index_list
 
