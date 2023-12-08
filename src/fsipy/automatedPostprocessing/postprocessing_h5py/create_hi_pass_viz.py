@@ -26,9 +26,10 @@ from fsipy.automatedPostprocessing.postprocessing_h5py.postprocessing_common_h5p
 
 
 def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_path: Path, time_between_files: float,
-                       dof_info: Union[dict, None], start_t: float, quantity: str, lowcut: Union[float, List[float]] = 0,
-                       highcut: Union[float, List[float]] = 100000, amplitude: bool = False,
-                       filter_type: str = "bandpass", pass_stop_list: List[str] = [], overwrite: bool = False) -> None:
+                       dof_info: Union[dict, None], start_t: float, quantity: str,
+                       lowcut: Union[float, List[float]] = 0, highcut: Union[float, List[float]] = 100000,
+                       amplitude: bool = False, filter_type: str = "bandpass", pass_stop_list: List[str] = [],
+                       overwrite: bool = False) -> None:
     """
     Create high-pass visualization data.
 
@@ -124,7 +125,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
 
         # Get number of timesteps
         num_ts = components_data[0].shape[1]
-    
+
     # The following lines have been commented out as they are not used in the current section
     # fluid_topology, wall_topology, all_topology = get_domain_topology(mesh_path)
     # fluid_ids, wall_ids, all_ids = get_domain_ids(mesh_path)
@@ -187,7 +188,8 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
 
     # If amplitude is selected, calculate moving RMS amplitude for the results
     if amplitude:
-        rms_magnitude = np.zeros((n_nodes_fsi, num_ts)) if quantity != "strain" else np.zeros((int(n_cells_fsi * 4), num_ts))
+        rms_magnitude = np.zeros((n_nodes_fsi, num_ts)) if quantity != "strain" else \
+            np.zeros((int(n_cells_fsi * 4), num_ts))
         window_size = 250  # This is approximately 1/4th of the value used in the spectrograms (992)
         for idy in tqdm(range(n_nodes_fsi), desc="--- Calculating amplitude", unit=" node"):
             for component_index, component_data in enumerate(components_data):
@@ -230,7 +232,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
 
             if amplitude:
                 logging.info(f"--- Calculating eigenvalues for timestep #{idx}...")
-                for iel in range(int(n_cells_fsi * 4)):        
+                for iel in range(int(n_cells_fsi * 4)):
                     # Create the strain tensor
                     strain_tensor = np.array([
                         [components_data[0][iel, idx], components_data[1][iel, idx], components_data[5][iel, idx]],
@@ -264,7 +266,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
     # 3. Create xdmf file for visualization
     if quantity in {"d", "v", "p"}:
         create_xdmf_file(num_ts, time_between_files, start_t, n_elements_fsi,
-                        n_nodes_fsi, att_type, viz_type, output_folder)
+                         n_nodes_fsi, att_type, viz_type, output_folder)
     elif quantity == "strain":
         create_checkpoint_xdmf_file(num_ts, time_between_files, start_t, n_elements_fsi,
                                     n_nodes_fsi, att_type, viz_type, output_folder)
@@ -340,7 +342,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
                     for name, data in dof_info.items():
                         dof_array = vector_data.create_dataset(f"{array_name}/{name}", data=data)
                         dof_array[:] = data
-                    
+
                     v_array = vector_data.create_dataset(f"{array_name}/vector", (n_cells_fsi * 4, 1))
                     v_array[:, 0] = rms_magnitude[:, idx]
 
@@ -349,7 +351,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
             # Create xdmf for visualization
             if quantity in {"d", "v", "p"}:
                 create_xdmf_file(num_ts, time_between_files, start_t, n_elements_fsi,
-                                n_nodes_fsi, att_type, viz_type, output_folder)
+                                 n_nodes_fsi, att_type, viz_type, output_folder)
             elif quantity == "strain":
                 create_checkpoint_xdmf_file(num_ts, time_between_files, start_t, n_elements_fsi,
                                             n_nodes_fsi, att_type, viz_type, output_folder)
@@ -520,8 +522,8 @@ def main():
                                       fluid_domain_id, solid_domain_id, stride)
         elif quantity in {"mps", "strain"}:
             _, dof_info = create_transformed_matrix(visualization_stress_strain_folder, formatted_data_folder,
-                                      mesh_path_solid, case_name, start_time, end_time, quantity,
-                                      fluid_domain_id, solid_domain_id, stride)
+                                                    mesh_path_solid, case_name, start_time, end_time, quantity,
+                                                    fluid_domain_id, solid_domain_id, stride)
         else:
             # Make the output h5 files with quantity magnitudes
             create_transformed_matrix(visualization_path, formatted_data_folder, mesh_path, case_name, start_time,
