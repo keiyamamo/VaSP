@@ -37,6 +37,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
         output_folder (Path): Path to the folder where the output will be saved.
         mesh_path (Path): Path to the mesh file.
         time_between_files (float): Time between files.
+        dof_info (Union[dict, None]): Dictionary containing the information about the degrees of freedom.
         start_t (float): Start time.
         quantity (str): Type of data (e.g., 'd', 'v', 'strain').
         lowcut (Union[int, List[int]]): Low-cut frequency or list of low-cut frequencies for multi-band filtering.
@@ -186,7 +187,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
 
     # If amplitude is selected, calculate moving RMS amplitude for the results
     if amplitude:
-        rms_magnitude = np.zeros((n_nodes_fsi, num_ts))
+        rms_magnitude = np.zeros((n_nodes_fsi, num_ts)) if quantity != "strain" else np.zeros((int(n_cells_fsi * 4), num_ts))
         window_size = 250  # This is approximately 1/4th of the value used in the spectrograms (992)
         for idy in tqdm(range(n_nodes_fsi), desc="--- Calculating amplitude", unit=" node"):
             for component_index, component_data in enumerate(components_data):
@@ -211,7 +212,6 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
             for name, data in dof_info.items():
                 dof_array = vector_data.create_dataset(f"{array_name}/{name}", data=data)
                 dof_array[:] = data
-            # TODO: fix v_array to be one-dimensional
 
             v_array = np.zeros((int(n_cells_fsi * 4), 9))
             v_array[:, 0] = components_data[0][:, idx]  # 11
@@ -230,7 +230,7 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
 
             if amplitude:
                 logging.info(f"--- Calculating eigenvalues for timestep #{idx}...")
-                for iel in range(n_nodes_fsi):
+                for iel in range(int(n_cells_fsi * 4)):        
                     # Create the strain tensor
                     strain_tensor = np.array([
                         [components_data[0][iel, idx], components_data[1][iel, idx], components_data[5][iel, idx]],
@@ -332,16 +332,19 @@ def create_hi_pass_viz(formatted_data_folder: Path, output_folder: Path, mesh_pa
 
             # Create H5 file
             with h5py.File(output_path, "a") as vector_data:
-                geo_array = vector_data.create_dataset("Mesh/0/mesh/geometry", data=coord_array_fsi)
-                topo_array = vector_data.create_dataset("Mesh/0/mesh/topology", data=topo_array_fsi)
-
                 logging.info("--- Saving data for each timestep...")
                 # Loop through elements and load in the data
                 for idx in tqdm(range(num_ts), desc="--- Saving data", unit=" timestep"):
-                    array_name = f"VisualisationVector/{idx}"
-                    v_array = vector_data.create_dataset(array_name, (n_nodes_fsi, 1))
+                    array_name = f"{viz_type}/{viz_type}_{idx}"
+                    assert dof_info is not None
+                    for name, data in dof_info.items():
+                        dof_array = vector_data.create_dataset(f"{array_name}/{name}", data=data)
+                        dof_array[:] = data
+                    
+                    v_array = vector_data.create_dataset(f"{array_name}/vector", (n_cells_fsi * 4, 1))
                     v_array[:, 0] = rms_magnitude[:, idx]
-                    att_type = "Scalar"
+
+            att_type = "Scalar"
 
             # Create xdmf for visualization
             if quantity in {"d", "v", "p"}:

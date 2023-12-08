@@ -154,7 +154,7 @@ def read_npz_files(filepath: Union[str, Path]) -> pd.DataFrame:
 def create_transformed_matrix(input_path: Union[str, Path], output_folder: Union[str, Path],
                               mesh_path: Union[str, Path], case_name: str, start_t: float, end_t: float, quantity: str,
                               fluid_domain_id: Union[int, list[int]], solid_domain_id: Union[int, list[int]],
-                              stride: int = 1) -> Tuple[float, list]:
+                              stride: int = 1) -> Tuple[float, dict[str, np.ndarray]]:
     """
     Create a transformed matrix from simulation data.
 
@@ -290,15 +290,15 @@ def create_transformed_matrix(input_path: Union[str, Path], output_folder: Union
     else:
         start = 0
         stop = num_ts
+    # In case of post-processed data, start-t and end-t are depend on how the user run `create_hdf5.py`
+    # Therefore, we need to set start and stop based on the number of timesteps in the h5 files
+    if quantity in {"wss", "mps", "strain"}:
+        start = 0
+        stop = num_ts
 
     # Initialize tqdm with the total number of iterations
     progress_bar = tqdm(total=stop - start, desc="--- Transferring timestep", unit="step")
-    # from IPython import embed; embed(); exit(1)
-    # NOTE: start, stop can work for displacement, velocity, pressure but not for strain, wss, mps
-    # since the latter three quantities are generated after the simulation and can have different
-    # number of timesteps than the simulation. 
-    for i in range(len(time_ts)):
-    # for i in range(start, stop):
+    for i in range(start, stop):
         time_file = time_ts[i]
 
         # Check if the spacing between files is not equal to the intended timestep
@@ -589,29 +589,24 @@ def create_checkpoint_xdmf_file(num_ts: int, time_between_files: float, start_t:
     Raises:
         ValueError: If an unsupported attribute type is provided.
     """
+    if att_type == "Scalar":
+        n_dim = 1
+    elif att_type == "Tensor":
+        n_dim = 9
+    elif att_type == "Vector":
+        n_dim = 3
+    else:
+        raise ValueError("Attribute type must be one of 'Scalar', 'Vector', or 'Tensor'.")
+
     # Create strings
     num_dof_per_cell = 4
-    n_dim = 9 if att_type == "Tensor" else 3
     num_tetrachedra = int(n_elements / 8)
     total_num_dof = num_tetrachedra * num_dof_per_cell * n_dim
     total_num_dof = str(total_num_dof)
     num_x_cell_dof = num_tetrachedra + 1
     num_x_cell_dof = str(num_x_cell_dof)
     num_tetrachedra = str(num_tetrachedra)
-    num_el = str(n_elements)
-    num_nodes = str(n_nodes)
-    """
-    NOTE during dev: num_el = 27048, num_nodes 6849
-    """
-    if att_type == "Scalar":
-        n_dim = '1'
-    elif att_type == "Tensor":
-        n_dim = '9'
-    elif att_type == "Vector":
-        n_dim = '3'
-    else:
-        raise ValueError("Attribute type must be one of 'Scalar', 'Vector', or 'Tensor'.")
-
+    n_dim = str(n_dim)
     # Write lines of xdmf file
     lines = f'''<?xml version="1.0"?>
 <Xdmf Version="3.0">
@@ -630,7 +625,7 @@ def create_checkpoint_xdmf_file(num_ts: int, time_between_files: float, start_t:
           <DataItem Dimensions="1156 3" Format="HDF">{viz_type}.h5:{viz_type}/{viz_type}_0/mesh/geometry</DataItem>
         </Geometry>
          <Time Value="{time_value}" />
-        <Attribute ItemType="FiniteElementFunction" ElementFamily="DG" ElementDegree="1" ElementCell="tetrahedron" Name="{viz_type}" Center="Other" AttributeType="Tensor">
+        <Attribute ItemType="FiniteElementFunction" ElementFamily="DG" ElementDegree="1" ElementCell="tetrahedron" Name="{viz_type}" Center="Other" AttributeType="{att_type}">
           <DataItem Dimensions="{total_num_dof} 1" NumberType="UInt" Format="HDF">{viz_type}.h5:{viz_type}/{viz_type}_{idx}/cell_dofs</DataItem>
           <DataItem Dimensions="{total_num_dof} 1" NumberType="Float" Format="HDF">{viz_type}.h5:{viz_type}/{viz_type}_{idx}/vector</DataItem>
           <DataItem Dimensions="{num_x_cell_dof} 1" NumberType="UInt" Format="HDF">{viz_type}.h5:{viz_type}/{viz_type}_{idx}/x_cell_dofs</DataItem>
