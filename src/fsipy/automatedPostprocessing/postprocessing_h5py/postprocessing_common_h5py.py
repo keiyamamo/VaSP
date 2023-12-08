@@ -190,9 +190,8 @@ def create_transformed_matrix(input_path: Union[str, Path], output_folder: Union
     # Get node ID's from input mesh. If save_deg=2, you can supply the original mesh to get the data for the
     # corner nodes, or supply a refined mesh to get the data for all nodes (very computationally intensive)
     if quantity in {"d", "v", "p"}:
-        fluid_ids, solid_ids, all_ids = get_domain_ids(mesh_path, fluid_domain_id, solid_domain_id)
+        _, _, all_ids = get_domain_ids(mesh_path, fluid_domain_id, solid_domain_id)
         ids = all_ids
-
 
     # Get name of xdmf file
     xdmf_files = {
@@ -567,9 +566,8 @@ def create_xdmf_file(num_ts: int, time_between_files: float, start_t: float, n_e
         xdmf_file.write(lines)
 
 
-
 def create_checkpoint_xdmf_file(num_ts: int, time_between_files: float, start_t: float, n_elements: int,
-                     n_nodes: int, att_type: str, viz_type: str, output_folder: Path) -> None:
+                                att_type: str, viz_type: str, output_folder: Path) -> None:
     """
     Create an XDMF file for a time series visualization.
 
@@ -632,7 +630,7 @@ def create_checkpoint_xdmf_file(num_ts: int, time_between_files: float, start_t:
           <DataItem Dimensions="{num_tetrachedra} 1" NumberType="UInt" Format="HDF">{viz_type}.h5:{viz_type}/{viz_type}_{idx}/cells</DataItem>
         </Attribute>
       </Grid>
-'''
+'''   # noqa
         if idx == num_ts - 1:
             break
     lines += '''\
