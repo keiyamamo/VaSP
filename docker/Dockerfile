@@ -14,7 +14,7 @@ COPY . ${WORKDIR}
 
 # Update environment file with new environment name
 RUN conda config --set channel_priority flexible
-RUN conda create --override-channels -c conda-forge/osx-64 -c conda-forge/noarch
+RUN mamba env update --file environment.yml --name dockerenv
 
 RUN echo "source activate dockerenv" > ~/.bashrc
 
