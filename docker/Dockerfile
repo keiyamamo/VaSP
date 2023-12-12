@@ -13,7 +13,7 @@ RUN mamba upgrade -y mamba
 COPY . ${WORKDIR}
 
 # Update environment file with new environment name
-RUN conda config --set channel_priority flexible
+RUN conda config --show channels
 RUN mamba env update --file environment.yml --name dockerenv
 
 RUN echo "source activate dockerenv" > ~/.bashrc
