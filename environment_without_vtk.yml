@@ -1,0 +1,22 @@
+name: fsipy
+
+channels:
+  - conda-forge
+
+dependencies:
+  - fenics
+  - morphman
+  - paramiko
+  - vmtk
+  - pip
+  - python >=3.8
+  - git
+  - meshio
+  - matplotlib
+  - pandas
+  - tqdm
+  - hdf5=1.12.2
+  - mpi4py=3.1.4
+  - pip:
+      - git+https://github.com/KVSlab/VaMPy.git
+      - git+https://github.com/KVSlab/turtleFSI.git
