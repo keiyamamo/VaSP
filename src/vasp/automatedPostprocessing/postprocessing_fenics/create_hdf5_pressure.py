@@ -38,6 +38,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--stride", type=int, default=1, help="Save frequency of simulation")
     parser.add_argument("-st", "--start-time", type=float, default=None, help="Desired start time for postprocessing")
     parser.add_argument("-et", "--end-time", type=float, default=None, help="Desired end time for postprocessing")
+    parser.add_argument("--high-pass", action="store_true", help="data is high-pass filtered")
+    parser.add_argument("--bands", type=int, nargs="+", default=[1, 2], help="band numbers for high-pass filtering")
     parser.add_argument("--log-level", type=int, default=20,
                         help="Specify the log level (default is 20, which is INFO)")
 
@@ -45,7 +47,7 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def create_hdf5(visualization_path, mesh_path, save_time_step, stride, start_time, end_time,
-                fluid_domain_id, solid_domain_id):
+                fluid_domain_id, solid_domain_id, high_pass=False, bands=[1, 2]):
 
     """
     Loads displacement/velocity data from turtleFSI output and reformats the data so that it can be read in fenics.
@@ -81,12 +83,14 @@ def create_hdf5(visualization_path, mesh_path, save_time_step, stride, start_tim
     d = Function(Vf)
 
     # Define paths for displacement files
-    xdmf_file_p = visualization_path / "pressure.xdmf"
+    if high_pass:
+        xdmf_file_p = visualization_path / f"pressure_{bands[0]}_to_{bands[1]}.xdmf"    
+    else:
+        xdmf_file_p = visualization_path / "pressure.xdmf"
 
     # Get information about h5 files associated with xdmf files and also information about the timesteps
     logging.info("--- Getting information about h5 files \n")
     h5file_name_list_p, timevalue_list, index_list_p = output_file_lists(xdmf_file_p)
-
     fluid_ids, _, _ = get_domain_ids(mesh_path, fluid_domain_id, solid_domain_id)
 
     # Open up the first displacement.h5 file to get the number of timesteps and nodes for the output data
@@ -97,7 +101,10 @@ def create_hdf5(visualization_path, mesh_path, save_time_step, stride, start_tim
 
     # Define path to the output files
     visualization_separate_domain_folder = visualization_path.parent / "Visualization_separate_domain"
-    d_output_path = visualization_separate_domain_folder / "p.h5" 
+    if high_pass:
+        p_output_path = visualization_separate_domain_folder / f"p_{bands[0]}_to_{bands[1]}.h5"
+    else:
+        p_output_path = visualization_separate_domain_folder / "p.h5" 
     # Initialize h5 file names that might differ during the loop
     h5_file_prev_p = None
 
@@ -109,9 +116,14 @@ def create_hdf5(visualization_path, mesh_path, save_time_step, stride, start_tim
         assert end_time <= timevalue_list[-1], "end_time must be less than the last time step"
 
     end_time = end_time if end_time is not None else timevalue_list[-1]
-
-    start_time_index = int(start_time / save_time_step) - 1
-    end_time_index = int(end_time / save_time_step) + 1
+    # In case the data is extracted, then the first time step might not be the start time of the simulation
+    # assume you already took out the data of interest
+    if start_time > save_time_step:
+        start_time_index = index_list_p[0]
+        end_time_index = index_list_p[-1]
+    else:
+        start_time_index = int(start_time / save_time_step) - 1
+        end_time_index = int(end_time / save_time_step) + 1
 
     # Initialize tqdm with the total number of iterations
     progress_bar = tqdm(total=end_time_index - start_time_index, desc="--- Converting data:", unit="step")
@@ -143,7 +155,7 @@ def create_hdf5(visualization_path, mesh_path, save_time_step, stride, start_tim
         file_mode = "a" if file_counter > start_time_index else "w"
 
         # Save pressure
-        viz_p_file = HDF5File(MPI.comm_world, str(d_output_path), file_mode=file_mode)
+        viz_p_file = HDF5File(MPI.comm_world, str(p_output_path), file_mode=file_mode)
         viz_p_file.write(d, "/pressure", time)
         viz_p_file.close()
 
@@ -168,7 +180,10 @@ def main() -> None:
 
     # Define paths for visulization and mesh files
     folder_path = Path(args.folder)
-    visualization_path = folder_path / "Visualization"
+    if args.high_pass:
+        visualization_path = folder_path / "Visualization_hi_pass"
+    else:
+        visualization_path = folder_path / "Visualization"
 
     # Read parameters from default_variables.json
     parameter_path = folder_path / "Checkpoint" / "default_variables.json"
@@ -193,7 +208,7 @@ def main() -> None:
         assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
 
     create_hdf5(visualization_path, mesh_path, save_time_step, args.stride,
-                args.start_time, args.end_time, fluid_domain_id, solid_domain_id)
+                args.start_time, args.end_time, fluid_domain_id, solid_domain_id, args.high_pass, args.bands)
 
 
 if __name__ == '__main__':

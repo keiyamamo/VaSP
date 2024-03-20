@@ -30,11 +30,13 @@ def parse_arguments() -> argparse.Namespace:
                         help="Path to the mesh file. If not given (None), " +
                              "it will assume that mesh is located <folder>/Mesh/mesh.h5)")
     parser.add_argument("--stride", type=int, default=1, help="Save frequency of simulation")
-
+    parser.add_argument("--high-pass", action="store_true", help="data is high-pass filtered")
+    parser.add_argument("--bands", type=int, nargs="+", default=[1, 2], help="band numbers for high-pass filtering")
     return parser.parse_args()
 
 
-def create_separate_domain_visualization(visualization_separate_domain_folder, mesh_path, stride=1):
+def create_separate_domain_visualization(visualization_separate_domain_folder, mesh_path, stride=1, 
+                                         high_pass=False, bands=[1, 2]):
     """
     Loads displacement and velocity from .h5 file given by create_hdf5.py,
     converts and saves to .xdmf format for visualization (in e.g. ParaView).
@@ -46,7 +48,10 @@ def create_separate_domain_visualization(visualization_separate_domain_folder, m
         stride (int): Save frequency of visualization output (default: 1)
     """
     # Path to the input files
-    file_path_p = visualization_separate_domain_folder / "p.h5"
+    if high_pass:
+        file_path_p = visualization_separate_domain_folder / f"p_{bands[0]}_to_{bands[1]}.h5"
+    else:
+        file_path_p = visualization_separate_domain_folder / "p.h5"
     assert file_path_p.exists() 
    
     file_p = HDF5File(MPI.comm_world, str(file_path_p), "r")
@@ -72,7 +77,10 @@ def create_separate_domain_visualization(visualization_separate_domain_folder, m
     p = Function(Vf)
     
     # Create writer for displacement and velocity
-    p_path = visualization_separate_domain_folder / "pressure_fluid.xdmf"
+    if high_pass:
+        p_path = visualization_separate_domain_folder / f"pressure_{bands[0]}_to_{bands[1]}.xdmf"
+    else:
+        p_path = visualization_separate_domain_folder / "pressure_fluid.xdmf"
     p_writer = XDMFFile(MPI.comm_world, str(p_path))
     p_writer.parameters["flush_output"] = True
     p_writer.parameters["functions_share_mesh"] = False
@@ -85,7 +93,6 @@ def create_separate_domain_visualization(visualization_separate_domain_folder, m
     for i in range(len(dataset_p)):
         
         file_p.read(p, dataset_p[i])
-
 
         timestamp = file_p.attributes(dataset_p[i])["timestamp"]
         if MPI.rank(MPI.comm_world) == 0:
@@ -123,7 +130,8 @@ def main() -> None:
             print("--- Using non-refined mesh \n")
         assert mesh_path.exists(), f"Mesh file {mesh_path} not found."
 
-    create_separate_domain_visualization(visualization_separate_domain_folder, mesh_path, args.stride)
+    create_separate_domain_visualization(visualization_separate_domain_folder, mesh_path, args.stride, 
+                                         args.high_pass, args.bands)
 
 
 if __name__ == "__main__":
