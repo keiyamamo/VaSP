@@ -144,7 +144,7 @@ def create_hdf5(visualization_path, mesh_path, save_time_step, stride, start_tim
 
         # Save pressure
         viz_p_file = HDF5File(MPI.comm_world, str(d_output_path), file_mode=file_mode)
-        viz_p_file.write(d, "/displacement", time)
+        viz_p_file.write(d, "/pressure", time)
         viz_p_file.close()
 
         # Update the information in the progress bar
