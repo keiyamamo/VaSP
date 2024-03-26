@@ -16,7 +16,7 @@ import argparse
 from tqdm import tqdm
 
 from vasp.automatedPostprocessing.postprocessing_common import get_domain_ids, output_file_lists
-from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters
+from dolfin import Mesh, HDF5File, FunctionSpace, Function, MPI, parameters
 
 
 # set compiler arguments
@@ -79,7 +79,8 @@ def create_hdf5(visualization_path, mesh_path, save_time_step, stride, start_tim
 
     # Define function spaces and functions
     logging.info("--- Defining function spaces and functions \n")
-    Vf = VectorFunctionSpace(mesh_fluid, "CG", 1)
+    # Vf = VectorFunctionSpace(mesh_fluid, "CG", 1)
+    Vf = FunctionSpace(mesh_fluid, "CG", 1)
     d = Function(Vf)
 
     # Define paths for displacement files

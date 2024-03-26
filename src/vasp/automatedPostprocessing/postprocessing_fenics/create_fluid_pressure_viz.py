@@ -9,7 +9,7 @@ converts and saves to .xdmf format for visualization (in e.g. ParaView).
 from pathlib import Path
 import argparse
 
-from dolfin import Mesh, HDF5File, VectorFunctionSpace, Function, MPI, parameters, XDMFFile
+from dolfin import Mesh, HDF5File, FunctionSpace, Function, MPI, parameters, XDMFFile
 from vampy.automatedPostprocessing.postprocessing_common import get_dataset_names
 
 
@@ -73,7 +73,8 @@ def create_separate_domain_visualization(visualization_separate_domain_folder, m
     if MPI.rank(MPI.comm_world) == 0:
         print("--- Define function spaces \n")
 
-    Vf = VectorFunctionSpace(mesh_fluid, "CG", 1)
+    # Vf = VectorFunctionSpace(mesh_fluid, "CG", 1)
+    Vf = FunctionSpace(mesh_fluid, "CG", 1)
     p = Function(Vf)
     
     # Create writer for displacement and velocity
