@@ -652,10 +652,11 @@ def plot_spectrogram(fig1: plt.Figure, ax1: plt.Axes, bins: np.ndarray, freqs: n
     else:
         im = ax1.pcolormesh(bins, freqs, Pxx, shading='gouraud', vmin=color_range[0], vmax=color_range[1])
 
-    fig1.colorbar(im, ax=ax1)
+    # fig1.colorbar(im, ax=ax1)
+    plt.axis('off')
 
-    if title is not None:
-        ax1.set_title('{}'.format(title), y=1.08)
+    # if title is not None:
+        # ax1.set_title('{}'.format(title), y=1.08)
     if x_label is not None:
         ax1.set_xlabel(x_label)
     ax1.set_ylabel('Frequency [Hz]')

@@ -184,7 +184,7 @@ def create_spectrogram_composite(case_name: str, quantity: str, df: pd.DataFrame
     spec_filename = f"{quantity}_{case_name}_{num_windows}_windows_thresh{min_color}_spectrogram"
     path_to_spec = Path(image_folder) / (spec_filename + '.png')
     logging.info(f"--- Saving spectrogram figure to {path_to_spec}\n")
-    fig2.savefig(path_to_spec)
+    fig2.savefig(path_to_spec, bbox_inches='tight', pad_inches=0)
 
     output_csv_path = path_to_spec.with_suffix('.csv')
     data_csv = np.append(freqs[np.newaxis].T, Pxx, axis=1)
