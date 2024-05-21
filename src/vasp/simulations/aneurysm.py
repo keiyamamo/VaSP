@@ -7,7 +7,9 @@ import numpy as np
 from vampy.simulation.Womersley import make_womersley_bcs, compute_boundary_geometry_acrn
 from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, facets, assemble, UserExpression, sqrt, FacetNormal, ds, \
-    DirichletBC, Measure, inner, parameters
+    DirichletBC, Measure, inner, parameters, Identity, inv
+
+from turtleFSI.modules.common import J_, F_
 
 from vasp.simulations.simulation_common import load_probe_points, calculate_and_print_flow_properties, \
     print_probe_points
@@ -94,27 +96,28 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_region, fsi_id, rigid_id, oute
     hdf.read(domains, "/domains")
 
     # Only consider FSI in domain within this sphere
-    sph_x = fsi_region[0]
-    sph_y = fsi_region[1]
-    sph_z = fsi_region[2]
-    sph_rad = fsi_region[3]
+    # sph_x = fsi_region[0]
+    # sph_y = fsi_region[1]
+    # sph_z = fsi_region[2]
+    # sph_rad = fsi_region[3]
 
-    i = 0
-    for submesh_facet in facets(mesh):
-        idx_facet = boundaries.array()[i]
-        if idx_facet == fsi_id or idx_facet == outer_id:
-            mid = submesh_facet.midpoint()
-            dist_sph_center = sqrt((mid.x() - sph_x) ** 2 + (mid.y() - sph_y) ** 2 + (mid.z() - sph_z) ** 2)
-            if dist_sph_center > sph_rad:
-                boundaries.array()[i] = rigid_id  # changed "fsi" idx to "rigid wall" idx
-        i += 1
+    # i = 0
+    # for submesh_facet in facets(mesh):
+    #     idx_facet = boundaries.array()[i]
+    #     if idx_facet == fsi_id or idx_facet == outer_id:
+    #         mid = submesh_facet.midpoint()
+    #         dist_sph_center = sqrt((mid.x() - sph_x) ** 2 + (mid.y() - sph_y) ** 2 + (mid.z() - sph_z) ** 2)
+    #         if dist_sph_center > sph_rad:
+    #             boundaries.array()[i] = rigid_id  # changed "fsi" idx to "rigid wall" idx
+    #     i += 1
 
     return mesh, domains, boundaries
 
 
 class InnerP(UserExpression):
-    def __init__(self, t, t_ramp, An, Bn, period, P_mean, **kwargs):
+    def __init__(self, t, t_start, t_ramp, An, Bn, period, P_mean, **kwargs):
         self.t = t
+        self.t_start = t_start
         self.t_ramp = t_ramp
         self.An = An
         self.Bn = Bn
@@ -127,8 +130,10 @@ class InnerP(UserExpression):
     def update(self, t):
         self.t = t
         # apply a sigmoid ramp to the pressure
-        if self.t < self.t_ramp:
-            ramp_factor = -0.5 * np.cos(np.pi * self.t / self.t_ramp) + 0.5
+        if self.t < self.t_start:
+            ramp_factor = 0.0
+        elif self.t < self.t_ramp and self.t >= self.t_start:
+            ramp_factor = -0.5 * np.cos(np.pi * (self.t - self.t_start) / (self.t_ramp - self.t_start)) + 0.5
         else:
             ramp_factor = 1.0
         if MPI.rank(MPI.comm_world) == 0:
@@ -152,7 +157,7 @@ class InnerP(UserExpression):
         return ()
 
 
-def create_bcs(t, DVP, mesh, boundaries, mu_f,
+def create_bcs(t, DVP, mesh, boundaries, mu_f, F_fluid_nonlinear, dvp_,
                fsi_id, inlet_id, inlet_outlet_s_id,
                rigid_id, psi, F_solid_linear, p_deg, FC_file,
                Q_mean, P_FC_File, P_mean, T_Cycle, **namespace):
@@ -175,27 +180,37 @@ def create_bcs(t, DVP, mesh, boundaries, mu_f,
     u_inlet_s = DirichletBC(DVP.sub(1), ((0.0, 0.0, 0.0)), boundaries, inlet_outlet_s_id)
 
     # Solid Displacement BCs
-    d_inlet = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, inlet_id)
-    d_inlet_s = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, inlet_outlet_s_id)
-    d_rigid = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, rigid_id)
+    # d_inlet = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, inlet_id)
+    # d_inlet_s = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, inlet_outlet_s_id)
+    # d_rigid = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, rigid_id)
 
     # Assemble boundary conditions
-    bcs = u_inlet + [d_inlet, u_inlet_s, d_inlet_s, d_rigid]
+    # bcs = u_inlet + [d_inlet, u_inlet_s, d_inlet_s, d_rigid]
+    bcs = u_inlet + [u_inlet_s]
 
     # Load Fourier coefficients for the pressure and scale by flow rate
     An_P, Bn_P = np.loadtxt(os.path.join(os.path.dirname(os.path.abspath(__file__)), P_FC_File)).T
 
     # Apply pulsatile pressure at the fsi interface by modifying the variational form
     n = FacetNormal(mesh)
-    dSS = Measure("dS", domain=mesh, subdomain_data=boundaries)
-    p_out_bc_val = InnerP(t=0.0, t_ramp=0.2, An=An_P, Bn=Bn_P, period=T_Cycle, P_mean=P_mean, degree=p_deg)
-    F_solid_linear += p_out_bc_val * inner(n('+'), psi('+')) * dSS(fsi_id)
+    # dSS = Measure("dS", domain=mesh, subdomain_data=boundaries)
+    p_out_bc_val = InnerP(t=0.0, t_start=0.2, t_ramp=0.4, An=An_P, Bn=Bn_P, period=T_Cycle, P_mean=P_mean, degree=p_deg)
+    # F_solid_linear += p_out_bc_val * inner(n('+'), psi('+')) * dSS(fsi_id)
+    dso_1 = ds(2, domain=mesh, subdomain_data=boundaries)
+    dso_2 = ds(4, domain=mesh, subdomain_data=boundaries)
+
+    n_1 = FacetNormal(dso_1)
+    n_2 = FacetNormal(dso_2)
+    pf = p_out_bc_val * Identity(3)
+    d = dvp_["n"].sub(0, deepcopy=True)
+    F_fluid_nonlinear += inner(J_(d) * pf * inv(F_(d)).T * n_1, psi) * dso_1
+    F_fluid_nonlinear += inner(J_(d) * pf * inv(F_(d)).T * n_2, psi) * dso_2
 
     # Create inlet subdomain for computing the flow rate inside post_solve
     dsi = ds(inlet_id, domain=mesh, subdomain_data=boundaries)
     inlet_area = assemble(1.0 * dsi)
     return dict(bcs=bcs, inlet=inlet, p_out_bc_val=p_out_bc_val, F_solid_linear=F_solid_linear, n=n, dsi=dsi,
-                inlet_area=inlet_area)
+                inlet_area=inlet_area, F_fluid_nonlinear=F_fluid_nonlinear)
 
 
 def initiate(mesh_path, scale_probe, **namespace):
