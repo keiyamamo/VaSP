@@ -67,8 +67,8 @@ def set_problem_parameters(default_variables, **namespace):
         nu_s=nu_s_val,  # Solid Poisson ratio [-]
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
         dx_s_id=2,  # ID of marker in the solid domain
-        k_s=[1E5],
-        c_s=[10],
+        k_s=[1E5, 1E5],
+        c_s=[10, 10],
         ds_s_id=[33],
         # FSI parameters
         fsi_region=[0.123, 0.134, 0.063, 0.004],  # x, y, and z coordinate of FSI region center,
