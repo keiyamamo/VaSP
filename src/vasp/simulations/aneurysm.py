@@ -67,8 +67,8 @@ def set_problem_parameters(default_variables, **namespace):
         nu_s=nu_s_val,  # Solid Poisson ratio [-]
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
         dx_s_id=2,  # ID of marker in the solid domain
-        k_s=[1E5, 1E5],
-        c_s=[10, 10],
+        k_s=[1E5],
+        c_s=[10],
         ds_s_id=[33],
         # FSI parameters
         fsi_region=[0.123, 0.134, 0.063, 0.004],  # x, y, and z coordinate of FSI region center,
@@ -178,7 +178,7 @@ class InnerP(UserExpression):
         return ()
 
 
-def create_bcs(t, DVP, mesh, boundaries, mu_f,
+def create_bcs(t, DVP, mesh, boundaries, mu_f, F_fluid_nonlinear,
                fsi_id, inlet_id, inlet_outlet_s_id,
                rigid_id, psi, F_solid_linear, p_deg, FC_file,
                Q_mean, P_FC_File, P_mean, T_Cycle, **namespace):
@@ -200,24 +200,32 @@ def create_bcs(t, DVP, mesh, boundaries, mu_f,
     u_inlet = [DirichletBC(DVP.sub(1).sub(i), inlet[i], boundaries, inlet_id) for i in range(3)]
     u_inlet_s = DirichletBC(DVP.sub(1), ((0.0, 0.0, 0.0)), boundaries, inlet_outlet_s_id)
 
-    
+    # Solid Displacement BCs
+    d_inlet = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, inlet_id)
+    d_inlet_s = DirichletBC(DVP.sub(0), (0.0, 0.0, 0.0), boundaries, inlet_outlet_s_id)
 
     # Assemble boundary conditions
-    bcs = u_inlet + [u_inlet_s]
+    bcs = u_inlet + [u_inlet_s, d_inlet, d_inlet_s]
 
     # Load Fourier coefficients for the pressure and scale by flow rate
     An_P, Bn_P = np.loadtxt(os.path.join(os.path.dirname(os.path.abspath(__file__)), P_FC_File)).T
 
     # Apply pulsatile pressure at the fsi interface by modifying the variational form
     n = FacetNormal(mesh)
-    dSS = Measure("dS", domain=mesh, subdomain_data=boundaries)
+    # dSS = Measure("dS", domain=mesh, subdomain_data=boundaries)
     p_out_bc_val = InnerP(t=0.0, t_start=0.2, t_ramp=0.4, An=An_P, Bn=Bn_P, period=T_Cycle, P_mean=P_mean, degree=p_deg)
-    F_solid_linear += p_out_bc_val * inner(n('+'), psi('+')) * dSS(fsi_id)
+    # F_solid_linear += p_out_bc_val * inner(n('+'), psi('+')) * dSS(fsi_id)
+
+    dso1 = ds(2, domain=mesh, subdomain_data=boundaries) # Outlet surface
+    dso2 = ds(4, domain=mesh, subdomain_data=boundaries) # Outlet surface
+
+    F_fluid_nonlinear += p_out_bc_val * inner(n, psi)*dso1
+    F_fluid_nonlinear += p_out_bc_val * inner(n, psi)*dso2
 
     # Create inlet subdomain for computing the flow rate inside post_solve
     dsi = ds(inlet_id, domain=mesh, subdomain_data=boundaries)
     inlet_area = assemble(1.0 * dsi)
-    return dict(bcs=bcs, inlet=inlet, p_out_bc_val=p_out_bc_val, F_solid_linear=F_solid_linear, n=n, dsi=dsi,
+    return dict(bcs=bcs, inlet=inlet, p_out_bc_val=p_out_bc_val, F_fluid_nonlinear=F_fluid_nonlinear, n=n, dsi=dsi,
                 inlet_area=inlet_area)
 
 
