@@ -1,14 +1,18 @@
 """
 Problem file for BA aneurysm 2014 FSI simulation
 """
+import os
 import numpy as np
+from scipy.interpolate import UnivariateSpline
 
 from turtleFSI.problems import *
 from dolfin import HDF5File, Mesh, MeshFunction, FacetNormal, \
-    DirichletBC, Measure, inner, parameters, assemble
+    DirichletBC, Measure, inner, parameters, assemble, VectorFunctionSpace, FunctionSpace, Function, \
+    XDMFFile, ds, UserExpression
 
 from vasp.simulations.simulation_common import load_probe_points, calculate_and_print_flow_properties, \
     print_probe_points, load_solid_probe_points, print_solid_probe_points
+from vampy.simulation.Womersley import make_womersley_bcs, compute_boundary_geometry_acrn
 
 # set compiler arguments
 parameters["form_compiler"]["quadrature_degree"] = 6
@@ -44,7 +48,7 @@ def set_problem_parameters(default_variables, **namespace):
         recompute=20,  # Recompute the Jacobian matix within time steps
         recompute_tstep=20,  # Recompute the Jacobian matix over time steps
         # boundary condition parameters
-        id_in=[5, 4],  # Inlet boundary IDs corase mesh
+        id_in=[4, 5],  # Inlet boundary IDs corase mesh
         inlet_outlet_s_id=11,  # inlet and outlet id for solid
         fsi_id=22,  # id for fsi surface
         rigid_id=11,  # "rigid wall" id for the fluid
@@ -92,10 +96,51 @@ def get_mesh_domain_and_boundaries(mesh_path, **namespace):
     return mesh, domains, boundaries
 
 
-def create_bcs(NS_expressions, mesh, T, dt, nu, V, Q, id_in, id_out, vel_t_ramp, t, **NS_namespace):
-    # Variables needed during the simulation
-    boundaries = MeshFunction("size_t", mesh, mesh.geometry().dim() - 1, mesh.domains())
-    ds = Measure("ds", domain=mesh, subdomain_data=boundaries)
+class InnerP(UserExpression):
+    def __init__(self, t, t_start, t_end, An, Bn, period, P_mean, **kwargs):
+        self.t = t
+        self.t_start = t_start
+        self.t_end = t_end
+        self.An = An
+        self.Bn = Bn
+        self.omega = (2.0 * np.pi / period)
+        self.P_mean = P_mean
+        self.p_0 = 0.0  # Initial pressure
+        self.P = self.p_0  # Apply initial pressure to inner pressure variable
+        super().__init__(**kwargs)
+
+    def update(self, t):
+        self.t = t
+        # apply a sigmoid ramp to the pressure
+        if self.t < self.t_start:
+            ramp_factor = 0.0
+        if self.t_start <= self.t < self.t_end:
+            ramp_factor = -0.5 * np.cos(np.pi * self.t / self.t_ramp) + 0.5
+        if self.t >= self.t_end:
+            ramp_factor = 1.0
+        if MPI.rank(MPI.comm_world) == 0:
+            print("ramp_factor = {} m^3/s".format(ramp_factor))
+
+        # Caclulate Pn (normalized pressure)from Fourier Coefficients
+        Pn = 0 + 0j
+        for i in range(len(self.An)):
+            Pn = Pn + (self.An[i] - self.Bn[i] * 1j) * np.exp(1j * i * self.omega * self.t)
+        Pn = abs(Pn)
+
+        # Multiply by mean pressure and ramp factor
+        self.P = ramp_factor * Pn * self.P_mean
+        if MPI.rank(MPI.comm_world) == 0:
+            print("P = {} Pa".format(self.P))
+
+    def eval(self, value, x):
+        value[0] = self.P
+
+    def value_shape(self):
+        return ()
+
+
+def create_bcs(mesh, boundaries, dvp_, DVP, F_solid_linear, t, p_deg, P_FC_File, id_in, inlet_outlet_s_id, psi,
+               fsi_id, P_mean, T_Cycle, mu_f, **namespace):
     # ID for boundary conditions
     id_lva = id_in[0]
     id_rva = id_in[1]
@@ -108,8 +153,8 @@ def create_bcs(NS_expressions, mesh, T, dt, nu, V, Q, id_in, id_out, vel_t_ramp,
         print("Create bcs")
 
     # Fluid velocity BCs
-    dsi1 = ds(id_lva)
-    dsi2 = ds(id_rva)
+    dsi1 = ds(id_lva, domain=mesh, subdomain_data=boundaries)
+    dsi2 = ds(id_rva, domain=mesh, subdomain_data=boundaries)
 
     # inlet area
     inlet_area1 = assemble(1 * dsi1)
@@ -201,9 +246,10 @@ def create_bcs(NS_expressions, mesh, T, dt, nu, V, Q, id_in, id_out, vel_t_ramp,
     spl.set_smoothing_factor(0.1)
     lva = spl(tnew)
     
+    tmp_element = DVP.sub(1).sub(0).ufl_element()
     # Inflow at lva
     tmp_area, tmp_center, tmp_radius, tmp_normal = compute_boundary_geometry_acrn(mesh, id_in[0], boundaries)
-    inlet_lva = make_womersley_bcs(tnew, lva, nu, tmp_center, tmp_radius, tmp_normal, V.ufl_element())
+    inlet_lva = make_womersley_bcs(tnew, lva, mu_f, tmp_center, tmp_radius, tmp_normal, tmp_element)
     for uc in inlet_lva:
         uc.set_t(t)
 
@@ -213,7 +259,7 @@ def create_bcs(NS_expressions, mesh, T, dt, nu, V, Q, id_in, id_out, vel_t_ramp,
     interp_rva.set_smoothing_factor(0.1)
     rva = interp_rva(tnew)
     
-    inlet_rva = make_womersley_bcs(tnew, rva, nu, tmp_center, tmp_radius, tmp_normal, V.ufl_element())
+    inlet_rva = make_womersley_bcs(tnew, rva, mu_f, tmp_center, tmp_radius, tmp_normal, tmp_element)
     for uc in inlet_rva:
         uc.set_t(t)
 
@@ -222,7 +268,7 @@ def create_bcs(NS_expressions, mesh, T, dt, nu, V, Q, id_in, id_out, vel_t_ramp,
     
     u_inlet_s = DirichletBC(DVP.sub(1), ((0.0, 0.0, 0.0)), boundaries, inlet_outlet_s_id)
     # Assemble boundary conditions
-    bcs = u_inlet_lva + + u_inlet_rva+ [u_inlet_s]
+    bcs = u_inlet_lva + u_inlet_rva+ [u_inlet_s]
 
     # Load Fourier coefficients for the pressure and scale by flow rate
     An_P, Bn_P = np.loadtxt(os.path.join(os.path.dirname(os.path.abspath(__file__)), P_FC_File)).T
@@ -230,10 +276,10 @@ def create_bcs(NS_expressions, mesh, T, dt, nu, V, Q, id_in, id_out, vel_t_ramp,
     # Apply pulsatile pressure at the fsi interface by modifying the variational form
     n = FacetNormal(mesh)
     dSS = Measure("dS", domain=mesh, subdomain_data=boundaries)
-    p_out_bc_val = InnerP(t=0.0, t_start=0.2, t_ramp=0.4, An=An_P, Bn=Bn_P, period=T_Cycle, P_mean=P_mean, degree=p_deg)
+    p_out_bc_val = InnerP(t=0.0, t_start=0.2, t_end=0.4, An=An_P, Bn=Bn_P, period=T_Cycle, P_mean=P_mean, degree=p_deg)
     F_solid_linear += p_out_bc_val * inner(n('+'), psi('+')) * dSS(fsi_id)
     
-    return dict(bcs=bcs, inlet_lva=inlet_lva, inlet_rva=inlet_rva, p_out_bc_val=p_out_bc_val, F_solid_linear=F_solid_linear, n=n, dsi=dsi,
+    return dict(bcs=bcs, inlet_lva=inlet_lva, inlet_rva=inlet_rva, p_out_bc_val=p_out_bc_val, F_solid_linear=F_solid_linear, n=n, dsi=dsi1,
                 inlet_area=inlet_area1)
 
 
