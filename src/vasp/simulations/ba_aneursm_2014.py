@@ -48,7 +48,7 @@ def set_problem_parameters(default_variables, **namespace):
         recompute=20,  # Recompute the Jacobian matix within time steps
         recompute_tstep=20,  # Recompute the Jacobian matix over time steps
         # boundary condition parameters
-        id_in=[4, 5],  # Inlet boundary IDs corase mesh
+        id_in=[2, 3],  # Inlet boundary IDs corase mesh
         inlet_outlet_s_id=11,  # inlet and outlet id for solid
         fsi_id=22,  # id for fsi surface
         rigid_id=11,  # "rigid wall" id for the fluid
@@ -69,6 +69,10 @@ def set_problem_parameters(default_variables, **namespace):
         nu_s=nu_s_val,  # Solid Poisson ratio [-]
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
         dx_s_id=2,  # ID of marker in the solid domain
+        robin_bc=True,  # Use Robin BC for solid displacement
+        k_s=[1E5],  # elastic response necessary for RobinBC
+        c_s=[1E1],  # viscoelastic response necessary for RobinBC
+        ds_s_id=[33],
         # Simulation parameters
         folder="ba_aneurysm_results_fsi",  # Folder name generated for the simulation
         mesh_path="mesh/file_aneurysm.h5",
@@ -238,11 +242,14 @@ def create_bcs(mesh, boundaries, dvp_, DVP, F_solid_linear, t, p_deg, P_FC_File,
                     0.433334731,
                     0.381273636,
                     0.319951809]
-    
-    t_values = np.linspace(0, 951, len(lva_velocity))
+    # scale flow rate to meters^3/s
+    lva_velocity = [x * 1E-6 for x in lva_velocity]
+    rva_velocity = [x * 1E-6 for x in rva_velocity]
+
+    t_values = np.linspace(0, 0.951, len(lva_velocity))
     spl = UnivariateSpline(t_values, lva_velocity, k=5)
 
-    tnew = np.linspace(0, 951, 1000)
+    tnew = np.linspace(0, 0.951, 1000)
     spl.set_smoothing_factor(0.1)
     lva = spl(tnew)
     
