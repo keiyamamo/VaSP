@@ -119,7 +119,7 @@ class InnerP(UserExpression):
         if self.t < self.t_start:
             ramp_factor = 0.0
         if self.t_start <= self.t < self.t_end:
-            ramp_factor = -0.5 * np.cos(np.pi * self.t / self.t_ramp) + 0.5
+            ramp_factor = -0.5 * np.cos(np.pi * (self.t - self.t_start) / (self.t_end - self.t_start)) + 0.5
         if self.t >= self.t_end:
             ramp_factor = 1.0
         if MPI.rank(MPI.comm_world) == 0:
@@ -242,9 +242,7 @@ def create_bcs(mesh, boundaries, dvp_, DVP, F_solid_linear, t, p_deg, P_FC_File,
                     0.433334731,
                     0.381273636,
                     0.319951809]
-    # scale flow rate to meters^3/s
-    lva_velocity = [x * 1E-6 for x in lva_velocity]
-    rva_velocity = [x * 1E-6 for x in rva_velocity]
+    
 
     t_values = np.linspace(0, 0.951, len(lva_velocity))
     spl = UnivariateSpline(t_values, lva_velocity, k=5)
@@ -252,6 +250,8 @@ def create_bcs(mesh, boundaries, dvp_, DVP, F_solid_linear, t, p_deg, P_FC_File,
     tnew = np.linspace(0, 0.951, 1000)
     spl.set_smoothing_factor(0.1)
     lva = spl(tnew)
+    # scale flow rate to meters^3/s
+    lva = lva * 1E-6
     
     tmp_element = DVP.sub(1).sub(0).ufl_element()
     # Inflow at lva
@@ -265,7 +265,8 @@ def create_bcs(mesh, boundaries, dvp_, DVP, F_solid_linear, t, p_deg, P_FC_File,
     interp_rva = UnivariateSpline(t_values, rva_velocity, k=5)
     interp_rva.set_smoothing_factor(0.1)
     rva = interp_rva(tnew)
-    
+    rva = rva * 1E-6
+
     inlet_rva = make_womersley_bcs(tnew, rva, mu_f, tmp_center, tmp_radius, tmp_normal, tmp_element)
     for uc in inlet_rva:
         uc.set_t(t)
