@@ -25,6 +25,10 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 
+# increase font size
+plt.rcParams.update({'font.size': 24})
+# make it bold
+
 
 def parse_log_file(log_file: str) -> Dict[str, Any]:
     """
@@ -68,7 +72,8 @@ def parse_log_file(log_file: str) -> Dict[str, Any]:
     # Define regular expressions for matching specific lines
     time_step_pattern = re.compile(r"Solved for timestep (.*), t = (.*) in (.*) s")
     ramp_factor_pattern = re.compile(r"ramp_factor = (.*) m\^3/s")
-    pressure_pattern = re.compile(r"Instantaneous normal stress prescribed at the FSI interface (.*) Pa")
+    # pressure_pattern = re.compile(r"Instantaneous normal stress prescribed at the FSI interface (.*) Pa")
+    pressure_pattern = re.compile(r"P = (.*) Pa")
     newton_iteration_pattern = \
         re.compile(r'Newton iteration (.*): r \(atol\) = (.*) \(tol = .*\), r \(rel\) = (.*) \(tol = .*\)')
     probe_point_pattern = re.compile(r"Probe Point (.*): Velocity: \((.*), (.*), (.*)\) \| Pressure: (.*)")
@@ -520,11 +525,15 @@ def plot_probe_points(time: np.ndarray, probe_points: Dict[int, Dict[str, np.nda
         # Extract the data within the specified range (start:end)
         magnitude_data = data["magnitude"][start:end]
         pressure_data = data["pressure"][start:end]
+        # add arterial pressure to all points
+        # create pressure wave from 70mmg to 110 mg using velocity wave
+        base_pressure = 9332 + 4000 * magnitude_data
+        pressure_data = base_pressure + pressure_data
 
         l1, = ax.plot(time[start:end], magnitude_data, color='b')
         ax.set_xlabel("Time [s]")
         ax.set_ylabel("Velocity [m/s]")
-        ax.set_title(f"Probe point {probe_point}")
+        # ax.set_title(f"Probe point {probe_point}")
         ax.grid(True)
         ax.tick_params(axis='y', which='major', labelsize=12, labelcolor='b')
 
@@ -534,6 +543,7 @@ def plot_probe_points(time: np.ndarray, probe_points: Dict[int, Dict[str, np.nda
         ax2.set_ylabel("Pressure [Pa]", color='r')
         ax2.legend([l1, l2], ["Velocity Magnitude", "Pressure"], loc="upper right")
         ax2.tick_params(axis='y', which='major', labelcolor='r')
+        plt.savefig('velocity.png', dpi=300, bbox_inches='tight')
 
     # Remove any empty subplots if the number of probe points doesn't fill the entire grid
     for i in range(num_selected_probe_points, num_rows * num_cols):
