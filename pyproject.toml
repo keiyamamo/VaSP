@@ -16,7 +16,13 @@ readme = "README.md"
 dependencies = [
     'numpy',
     'matplotlib',
+    'scipy',
+    'pandas',
+    'h5py',
+    'vtk',
+    'tqdm',
     'vampy@git+https://github.com/KVSlab/VaMPy',
+    'turtleFSI@git+https://github.com/KVSlab/turtleFSI.git'
 ]
 
 [project.scripts]
