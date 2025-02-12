@@ -41,8 +41,10 @@ def separate_mesh(mesh_path: Path, fluid_domain_id: Union[int, list],
             # In case of multiple domains, we need to merge them into one domain first
             merged_domains = MeshFunction("size_t", mesh, mesh.topology().dim(), 1)
             tmp_array = domains.array().copy()
-            tmp_array[domains.where_equal(domain_id[0])] = domain_id[0]
-            tmp_array[domains.where_equal(domain_id[1])] = domain_id[0]
+            print(domain_id, type(domain_id), len(domain_id))
+            for idx in domain_id:
+                tmp_array[domains.where_equal(idx)] = domain_id[0]
+
             merged_domains.set_values(tmp_array)
             domain_of_interest = SubMesh(mesh, merged_domains, domain_id[0])
             sub_domains = MeshFunction("size_t", domain_of_interest, domain_of_interest.topology().dim())
@@ -70,7 +72,7 @@ def separate_mesh(mesh_path: Path, fluid_domain_id: Union[int, list],
     for domain_id, domain_name in zip([fluid_domain_id, solid_domain_id], ["fluid", "solid"]):
         # non-zero is used to find the indices of the domain of interest
         if isinstance(domain_id, list):
-            domain_of_interest_index = np.where((domain_values == domain_id[0]) | (domain_values == domain_id[1]))
+            domain_of_interest_index = np.where(np.logical_or.reduce([domain_values==idx for idx in domain_id]))
         else:
             domain_of_interest_index = np.where(domain_values == domain_id)
         # extract the topology of the domain of interest
