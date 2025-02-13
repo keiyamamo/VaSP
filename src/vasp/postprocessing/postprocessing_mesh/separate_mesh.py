@@ -41,7 +41,6 @@ def separate_mesh(mesh_path: Path, fluid_domain_id: Union[int, list],
             # In case of multiple domains, we need to merge them into one domain first
             merged_domains = MeshFunction("size_t", mesh, mesh.topology().dim(), 1)
             tmp_array = domains.array().copy()
-            print(domain_id, type(domain_id), len(domain_id))
             for idx in domain_id:
                 tmp_array[domains.where_equal(idx)] = domain_id[0]
 
@@ -77,10 +76,12 @@ def separate_mesh(mesh_path: Path, fluid_domain_id: Union[int, list],
             domain_of_interest_index = np.where(domain_values == domain_id)
         # extract the topology of the domain of interest
         domain_of_interest_topology = domain_topology[domain_of_interest_index[0], :]
+    
         # Here, we want to extract the coordinates of the domain of interest
         # We can do this by extracting the unique node IDs of the domain of interest from the topology
         unique_node_ids = np.unique(domain_of_interest_topology)
         domain_of_interest_coordinates = domain_coordinates[unique_node_ids, :]
+    
         # Fix topology of the domain of interest
         # This is necessary because the node numbering may not be continuous
         # while there is one to one correspondence between the node IDs and the coordinates
@@ -90,6 +91,9 @@ def separate_mesh(mesh_path: Path, fluid_domain_id: Union[int, list],
             node_id_mapping = {old_id: new_id for new_id, old_id in enumerate(unique_node_ids)}
             # Replace old node IDs with new continuous node IDs in the topology array
             domain_of_interest_topology = np.vectorize(node_id_mapping.get)(domain_of_interest_topology)
+            # if domain_name == "solid" and mesh_path.stem == "mesh_refined":
+            #     from IPython import embed; embed(); exit(1)
+        
         else:
             print(f" --- {domain_name} topology does not need to be fixed \n")
 
@@ -144,11 +148,6 @@ def main() -> None:
             parameters = json.load(f)
             fluid_domain_id = parameters["dx_f_id"]
             solid_domain_id = parameters["dx_s_id"]
-
-        if isinstance(fluid_domain_id, list):
-            assert len(fluid_domain_id) == 2, "Only two fluid domains are supported."
-        if isinstance(solid_domain_id, list):
-            assert len(solid_domain_id) == 2, "Only two solid domains are supported."
 
         print(f" --- Fluid domain ID: {fluid_domain_id} and Solid domain ID: {solid_domain_id} \n")
 

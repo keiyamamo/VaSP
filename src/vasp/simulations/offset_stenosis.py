@@ -56,9 +56,9 @@ def set_problem_parameters(default_variables, **namespace):
         Q_mean=2.5E-06,
         P_mean=11200,
         T_Cycle=0.951,  # Used to define length of flow waveform
-        rho_f=[1.000E3, 1.000E3],  # Fluid density [kg/m3]
-        mu_f=[1.5E-3, 1.0E-2],  # Fluid dynamic viscosity [Pa.s]
-        dx_f_id=[1, 1001],  # ID of marker in the fluid domain
+        rho_f=1.000E3,  # Fluid density [kg/m3]
+        mu_f=1.5E-3,  # Fluid dynamic viscosity [Pa.s]
+        dx_f_id=1,  # ID of marker in the fluid domain
         # mesh lifting parameters (see turtleFSI for options)
         extrapolation="laplace",
         extrapolation_sub_type="constant",
@@ -67,7 +67,7 @@ def set_problem_parameters(default_variables, **namespace):
         mu_s=mu_s_val,  # Solid shear modulus or 2nd Lame Coef. [Pa]
         nu_s=nu_s_val,  # Solid Poisson ratio [-]
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
-        dx_s_id=2,  # ID of marker in the solid domain
+        dx_s_id=[2, 100, 200],  # ID of marker in the solid domain
         # FSI parameters
         fsi_region=[0.008, 0, 0, 0.008],  # range of x coordinates for fsi region
         # Simulation parameters
@@ -77,12 +77,16 @@ def set_problem_parameters(default_variables, **namespace):
         P_FC_File="FC_Pressure",  # File name containing the Fourier coefficients for the pressure waveform
         compiler_parameters=_compiler_parameters,  # Update the default values of the compiler arguments (FEniCS)
         save_deg=2,  # Degree of the functions saved for visualisation
+        solid_properties=[{"dx_s_id":2,"material_model":"MooneyRivlin","rho_s":1.0E3,"mu_s":mu_s_val,"lambda_s":lambda_s_val,"C01":0.2e6,"C10":0.0,"C11":1.8e6}, 
+                            {"dx_s_id":100,"material_model":"MooneyRivlin","rho_s":1.0E3,"mu_s":mu_s_val,"lambda_s":lambda_s_val,"C01":0.02e6,"C10":0.0,"C11":1.8e6},
+                            {"dx_s_id":200,"material_model":"MooneyRivlin","rho_s":1.0E3,"mu_s":mu_s_val,"lambda_s":lambda_s_val,"C01":0.02e6,"C10":0.0,"C11":1.3e6}
+                            ],
     ))
 
     return default_variables
 
 
-def get_mesh_domain_and_boundaries(mesh_path, fsi_region, dx_f_id, fsi_id, rigid_id, outer_id, **namespace):
+def get_mesh_domain_and_boundaries(mesh_path, fsi_region, dx_s_id, fsi_id, rigid_id, outer_id, **namespace):
 
     # Read mesh
     mesh = Mesh()
@@ -127,14 +131,24 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_region, dx_f_id, fsi_id, rigid
     #     i += 1
 
     # In this region, make fluid more viscous
-    x_min = 0.024
+    x_min = -0.006
     i = 0
     for cell in cells(mesh):
         idx_cell = domains.array()[i]
-        if idx_cell == dx_f_id[0]:
+        if idx_cell == dx_s_id[0]:
+            mid = cell.midpoint()
+            if mid.x() < x_min:
+                domains.array()[i] = dx_s_id[1]
+        i += 1
+    
+    x_min = 0.02
+    i = 0
+    for cell in cells(mesh):
+        idx_cell = domains.array()[i]
+        if idx_cell == dx_s_id[0]:
             mid = cell.midpoint()
             if mid.x() > x_min:
-                domains.array()[i] = dx_f_id[1]
+                domains.array()[i] = dx_s_id[2]
         i += 1
 
     return mesh, domains, boundaries
@@ -161,7 +175,7 @@ def create_bcs(t, DVP, mesh, boundaries, mu_f,
 
     # Create Womersley boundary condition at inlet
     tmp_element = DVP.sub(1).sub(0).ufl_element()
-    inlet = make_womersley_bcs(T_Cycle, None, mu_f[0], tmp_center, tmp_radius, tmp_normal, tmp_element, Cn=Cn)
+    inlet = make_womersley_bcs(T_Cycle, None, mu_f, tmp_center, tmp_radius, tmp_normal, tmp_element, Cn=Cn)
     # Initialize inlet expressions with initial time
     for uc in inlet:
         uc.set_t(t)
@@ -220,5 +234,5 @@ def post_solve(probe_points, solid_probe_points, dvp_, dt, mesh, inlet_area, dsi
 
     print_probe_points(v, p, probe_points)
     print_solid_probe_points(d, solid_probe_points)
-    calculate_and_print_flow_properties(dt, mesh, v, inlet_area, mu_f[0], rho_f[0], n, dsi)
+    calculate_and_print_flow_properties(dt, mesh, v, inlet_area, mu_f, rho_f, n, dsi)
     compute_minimum_jacobian(mesh, d)
