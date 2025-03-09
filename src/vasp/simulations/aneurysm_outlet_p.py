@@ -100,21 +100,7 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_region, fsi_id, rigid_id, oute
 
     print_mesh_information(mesh)
 
-    # Only consider FSI in domain within this sphere
-    sph_x = fsi_region[0]
-    sph_y = fsi_region[1]
-    sph_z = fsi_region[2]
-    sph_rad = fsi_region[3]
-
-    i = 0
-    for submesh_facet in facets(mesh):
-        idx_facet = boundaries.array()[i]
-        if idx_facet == fsi_id or idx_facet == outer_id:
-            mid = submesh_facet.midpoint()
-            dist_sph_center = sqrt((mid.x() - sph_x) ** 2 + (mid.y() - sph_y) ** 2 + (mid.z() - sph_z) ** 2)
-            if dist_sph_center > sph_rad:
-                boundaries.array()[i] = rigid_id  # changed "fsi" idx to "rigid wall" idx
-        i += 1
+   
 
     return mesh, domains, boundaries
 
