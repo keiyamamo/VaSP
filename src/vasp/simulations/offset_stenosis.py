@@ -67,7 +67,7 @@ def set_problem_parameters(default_variables, **namespace):
         mu_s=mu_s_val,  # Solid shear modulus or 2nd Lame Coef. [Pa]
         nu_s=nu_s_val,  # Solid Poisson ratio [-]
         lambda_s=lambda_s_val,  # Solid Young's modulus [Pa]
-        dx_s_id=2,  # ID of marker in the solid domain
+        dx_s_id=[2, 1002],  # ID of marker in the solid domain
         # FSI parameters
         fsi_region=[0.008, 0, 0, 0.008],  # range of x coordinates for fsi region
         # Simulation parameters
@@ -77,12 +77,14 @@ def set_problem_parameters(default_variables, **namespace):
         P_FC_File="FC_Pressure",  # File name containing the Fourier coefficients for the pressure waveform
         compiler_parameters=_compiler_parameters,  # Update the default values of the compiler arguments (FEniCS)
         save_deg=2,  # Degree of the functions saved for visualisation
+        solid_properties=[{"dx_s_id":2,"material_model":"StVenantKirchoff","rho_s":1.0E3,"mu_s":mu_s_val,"lambda_s":lambda_s_val},
+                          {"dx_s_id":1002,"material_model":"StVenantKirchoff","rho_s":1.0E3,"mu_s":mu_s_val,"lambda_s":lambda_s_val,"viscoelasticity":"Form1","mu_visc_s":0.0, "lambda_visc_s":5e3}],
     ))
 
     return default_variables
 
 
-def get_mesh_domain_and_boundaries(mesh_path, fsi_region, dx_f_id, fsi_id, rigid_id, outer_id, **namespace):
+def get_mesh_domain_and_boundaries(mesh_path, fsi_region, dx_f_id, dx_s_id, **namespace):
 
     # Read mesh
     mesh = Mesh()
@@ -101,15 +103,15 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_region, dx_f_id, fsi_id, rigid
     sph_z = fsi_region[2]
     sph_rad = fsi_region[3]
 
-    i = 0
-    for submesh_facet in facets(mesh):
-        idx_facet = boundaries.array()[i]
-        if idx_facet == fsi_id or idx_facet == outer_id:
-            mid = submesh_facet.midpoint()
-            dist_sph_center = sqrt((mid.x() - sph_x) ** 2 + (mid.y() - sph_y) ** 2 + (mid.z() - sph_z) ** 2)
-            if dist_sph_center > sph_rad:
-                boundaries.array()[i] = rigid_id  # changed "fsi" idx to "rigid wall" idx
-        i += 1
+    # i = 0
+    # for submesh_facet in facets(mesh):
+    #     idx_facet = boundaries.array()[i]
+    #     if idx_facet == fsi_id or idx_facet == outer_id:
+    #         mid = submesh_facet.midpoint()
+    #         dist_sph_center = sqrt((mid.x() - sph_x) ** 2 + (mid.y() - sph_y) ** 2 + (mid.z() - sph_z) ** 2)
+    #         if dist_sph_center > sph_rad:
+    #             boundaries.array()[i] = rigid_id  # changed "fsi" idx to "rigid wall" idx
+    #     i += 1
 
     # NOTE: Instead of using a sphere, we can also use a box to define the FSI region as follows
     # Only consider FSI in domain within fsi_x_range, fsi_y_range, fsi_z_range
@@ -125,6 +127,17 @@ def get_mesh_domain_and_boundaries(mesh_path, fsi_region, dx_f_id, fsi_id, rigid
     #         elif mid.z() < fsi_region[4] or mid.z() > fsi_region[5]:
     #             boundaries.array()[i] = rigid_id
     #     i += 1
+
+     # In this region, make solid viscoelastic
+    x_min = 0.01
+    i = 0
+    for cell in cells(mesh):
+        idx_cell = domains.array()[i]
+        if idx_cell == dx_s_id[0]:
+            mid = cell.midpoint()
+            if mid.x() > x_min:
+                domains.array()[i] = dx_s_id[1]
+        i += 1
 
     # In this region, make fluid more viscous
     x_min = 0.024
